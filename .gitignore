@@ -1,0 +1,4 @@
+.env/**
+spell/**
+.luarc.json
+lazy-lock.json
