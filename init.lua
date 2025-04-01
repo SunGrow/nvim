@@ -14,7 +14,7 @@ vim.opt.ignorecase = true
 vim.opt.smartcase = true
 vim.opt.signcolumn = 'yes'
 vim.opt.updatetime = 250
-vim.opt.timeoutlen = 300
+vim.opt.timeoutlen = 900
 vim.opt.splitright = true
 vim.opt.splitbelow = true
 vim.opt.list = true
@@ -119,9 +119,11 @@ require("lazy").setup({
       vim.keymap.set('n', 'gd', vim.lsp.buf.definition)
       vim.keymap.set('n', 'K', vim.lsp.buf.hover)
       vim.keymap.set('n', 'gi', vim.lsp.buf.implementation)
-      vim.keymap.set('n', '<leader>rn', vim.lsp.buf.rename)
-      vim.keymap.set('n', '<leader>ca', vim.lsp.buf.code_action)
-      vim.keymap.set('n', 'gr', vim.lsp.buf.references)
+      vim.keymap.set('n', '<f2>', vim.lsp.buf.rename)
+      vim.keymap.set('n', '<a-cr>', vim.lsp.buf.code_action)
+      vim.keymap.set('n', '<a-]>', vim.lsp.buf.references)
+      vim.keymap.set('n', '<as-]>', vim.lsp.buf.outgoing_calls)
+      vim.keymap.set('n', '<ac-]>', vim.lsp.buf.incoming_calls)
 
       -- Configure LSP servers
       lspconfig.lua_ls.setup({
@@ -147,6 +149,7 @@ require("lazy").setup({
           '.clangd',
           '.clang-tidy',
           '.clang-format',
+          'clang-format',
           'compile_commands.json',
           'compile_flags.txt',
           'configure.ac',
@@ -297,14 +300,14 @@ require("lazy").setup({
     },
     config = function()
       local dap, dapui = require('dap'), require('dapui')
-      
+
       -- codelldb adapter configuration
       dap.adapters.codelldb = {
         type = 'server',
         port = "${port}",
         executable = {
-          command = '/usr/bin/lldb-vscode',  -- Updated path to system lldb-vscode
-          args = {"--port", "${port}"},
+          command = '/usr/bin/lldb-vscode', -- Updated path to system lldb-vscode
+          args = { "--port", "${port}" },
         },
       }
 
@@ -323,7 +326,7 @@ require("lazy").setup({
           runInTerminal = false,
         },
       }
-      
+
       -- Link to C configuration as well
       dap.configurations.c = dap.configurations.cpp
 
@@ -364,10 +367,10 @@ require("lazy").setup({
 
       -- Debugging keymaps
       vim.keymap.set('n', '<leader>dt', dap.toggle_breakpoint, { desc = 'Toggle Breakpoint' })
-      vim.keymap.set('n', '<leader>dc', dap.continue, { desc = 'Continue' })
-      vim.keymap.set('n', '<leader>ds', dap.step_over, { desc = 'Step Over' })
-      vim.keymap.set('n', '<leader>di', dap.step_into, { desc = 'Step Into' })
-      vim.keymap.set('n', '<leader>do', dap.step_out, { desc = 'Step Out' })
+      vim.keymap.set('n', '<f5>', dap.continue, { desc = 'Continue' })
+      vim.keymap.set('n', '<f10>', dap.step_over, { desc = 'Step Over' })
+      vim.keymap.set('n', '<f11>', dap.step_into, { desc = 'Step Into' })
+      vim.keymap.set('n', '<s-f11>', dap.step_out, { desc = 'Step Out' })
       vim.keymap.set('n', '<leader>du', dapui.toggle, { desc = 'Toggle UI' })
       vim.keymap.set('n', '<M-k>', require('dapui').eval, { desc = 'Evaluate under cursor' })
       vim.keymap.set('v', '<M-k>', require('dapui').eval, { desc = 'Evaluate selection' })
@@ -387,10 +390,7 @@ require("lazy").setup({
         python = { 'black' },
         rust = { 'rustfmt' },
       },
-      format_on_save = {
-        timeout_ms = 500,
-        lsp_fallback = true,
-      },
+      format_on_save = false,
       formatters = {
         clang_format = {
           -- Optional: specify custom clang-format options
@@ -522,6 +522,32 @@ require("lazy").setup({
       disabled_filetypes = { "qf", "netrw", "NvimTree", "lazy", "mason", "oil" },
     },
   },
+  { -- Reminder for what I'm doing right now
+    'Hashino/doing.nvim',
+    config = function()
+      require('doing').setup {
+        -- default options
+        message_timeout = 2000,
+        winbar = {
+          enabled = true,
+          -- ignores buffers that match filetype
+          ignored_buffers = { 'NvimTree' }
+        },
+
+        doing_prefix = 'Current Task: ',
+        store = {
+          -- automatically create a .tasks when calling :Do
+          auto_create_file = true,
+          file_name = '.tasks',
+        },
+      }
+      -- example on how to change the winbar highlight
+      vim.api.nvim_set_hl(0, 'WinBar', { link = 'Search' })
+    end,
+  },
+  {
+    'sindrets/diffview.nvim'
+  }
 })
 
 -- Additional keymaps
