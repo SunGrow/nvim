@@ -1,8 +1,12 @@
--- Basic editor settings
+-- =============================================================================
+-- Leader & globals
+-- =============================================================================
 vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
 
--- Essential options
+-- =============================================================================
+-- Editor options
+-- =============================================================================
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.mouse = 'a'
@@ -30,7 +34,16 @@ vim.opt.shiftwidth = 2
 vim.opt.tabstop = 2
 vim.opt.softtabstop = 2
 
+-- =============================================================================
+-- General keymaps
+-- =============================================================================
+vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<cr>', { desc = 'Clear search highlight' })
+vim.keymap.set('n', '<leader>w', '<C-W>', { desc = 'Enter window mode' })
+vim.keymap.set('n', '<leader>e', ':Ex<CR>', { desc = 'Enter file navigation' })
+
+-- =============================================================================
 -- Bootstrap lazy.nvim
+-- =============================================================================
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
   vim.fn.system({
@@ -44,9 +57,33 @@ if not vim.loop.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- =============================================================================
 -- Plugin specifications
+-- =============================================================================
 require("lazy").setup({
-  -- Essential plugins
+  -- ---------------------------------------------------------------------------
+  -- Core dependencies
+  -- ---------------------------------------------------------------------------
+  'nvim-lua/plenary.nvim',
+  'nvim-tree/nvim-web-devicons',
+  'MunifTanjim/nui.nvim',
+
+  -- ---------------------------------------------------------------------------
+  -- UI & Theme
+  -- ---------------------------------------------------------------------------
+  {
+    'catppuccin/nvim',
+    name = 'catppuccin',
+    lazy = false,
+    priority = 1000,
+    config = function()
+      vim.cmd.colorscheme('catppuccin-latte')
+    end,
+  },
+
+  -- ---------------------------------------------------------------------------
+  -- Telescope
+  -- ---------------------------------------------------------------------------
   {
     'nvim-telescope/telescope.nvim',
     branch = '0.1.x',
@@ -71,24 +108,26 @@ require("lazy").setup({
       })
       telescope.load_extension('fzf')
 
-      -- Telescope keymaps
-      vim.keymap.set('n', '<leader>ff', require('telescope.builtin').find_files)
-      vim.keymap.set('n', '<leader>fg', require('telescope.builtin').live_grep)
-      vim.keymap.set('n', '<leader>fb', require('telescope.builtin').buffers)
-      vim.keymap.set('n', '<leader>fh', require('telescope.builtin').help_tags)
+      vim.keymap.set('n', '<leader>ff', require('telescope.builtin').find_files, { desc = 'Find files' })
+      vim.keymap.set('n', '<leader>fg', require('telescope.builtin').live_grep, { desc = 'Live grep' })
+      vim.keymap.set('n', '<leader>fb', require('telescope.builtin').buffers, { desc = 'Buffers' })
+      vim.keymap.set('n', '<leader>fh', require('telescope.builtin').help_tags, { desc = 'Help tags' })
     end,
   },
 
+  -- ---------------------------------------------------------------------------
   -- LSP Support
+  -- ---------------------------------------------------------------------------
   {
     'neovim/nvim-lspconfig',
     event = { 'BufReadPre', 'BufNewFile' },
     dependencies = {
       'williamboman/mason.nvim',
       'williamboman/mason-lspconfig.nvim',
+      'hrsh7th/cmp-nvim-lsp',
       {
         'folke/lazydev.nvim',
-        ft = "lua",
+        ft = 'lua',
         opts = {
           library = {
             { path = "${3rd}/luv/library", words = { "vim%.uv" } },
@@ -112,20 +151,19 @@ require("lazy").setup({
       })
 
       local lspconfig = require('lspconfig')
-      local capabilities = vim.lsp.protocol.make_client_capabilities()
+      local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
       -- LSP keymaps
-      vim.keymap.set('n', 'gD', vim.lsp.buf.declaration)
-      vim.keymap.set('n', 'gd', vim.lsp.buf.definition)
-      vim.keymap.set('n', 'K', vim.lsp.buf.hover)
-      vim.keymap.set('n', 'gi', vim.lsp.buf.implementation)
-      vim.keymap.set('n', '<f2>', vim.lsp.buf.rename)
-      vim.keymap.set('n', '<a-cr>', vim.lsp.buf.code_action)
-      vim.keymap.set('n', '<a-]>', vim.lsp.buf.references)
-      vim.keymap.set('n', '<as-]>', vim.lsp.buf.outgoing_calls)
-      vim.keymap.set('n', '<ac-]>', vim.lsp.buf.incoming_calls)
+      vim.keymap.set('n', 'gD', vim.lsp.buf.declaration, { desc = 'LSP declaration' })
+      vim.keymap.set('n', 'gd', vim.lsp.buf.definition, { desc = 'LSP definition' })
+      vim.keymap.set('n', 'K', vim.lsp.buf.hover, { desc = 'LSP hover' })
+      vim.keymap.set('n', 'gi', vim.lsp.buf.implementation, { desc = 'LSP implementation' })
+      vim.keymap.set('n', '<f2>', vim.lsp.buf.rename, { desc = 'LSP rename' })
+      vim.keymap.set('n', '<a-cr>', vim.lsp.buf.code_action, { desc = 'LSP code action' })
+      vim.keymap.set('n', '<a-]>', vim.lsp.buf.references, { desc = 'LSP references' })
+      vim.keymap.set('n', '<as-]>', vim.lsp.buf.outgoing_calls, { desc = 'LSP outgoing calls' })
+      vim.keymap.set('n', '<ac-]>', vim.lsp.buf.incoming_calls, { desc = 'LSP incoming calls' })
 
-      -- Configure LSP servers
       lspconfig.lua_ls.setup({
         capabilities = capabilities,
       })
@@ -133,18 +171,18 @@ require("lazy").setup({
       lspconfig.clangd.setup({
         capabilities = capabilities,
         cmd = {
-          "clangd",
-          "--background-index",
-          "--clang-tidy",
-          "--header-insertion=iwyu",
-          "--completion-style=detailed",
-          "--function-arg-placeholders",
-          "--fallback-style=llvm",
-          "--suggest-missing-includes",
-          "--pch-storage=memory",
-          "--cross-file-rename",
+          'clangd',
+          '--background-index',
+          '--clang-tidy',
+          '--header-insertion=iwyu',
+          '--completion-style=detailed',
+          '--function-arg-placeholders',
+          '--fallback-style=llvm',
+          '--suggest-missing-includes',
+          '--pch-storage=memory',
+          '--cross-file-rename',
         },
-        filetypes = { "c", "cpp", "objc", "objcpp", "cuda", "proto" },
+        filetypes = { 'c', 'cpp', 'objc', 'objcpp', 'cuda', 'proto' },
         root_dir = lspconfig.util.root_pattern(
           '.clangd',
           '.clang-tidy',
@@ -160,7 +198,7 @@ require("lazy").setup({
 
       lspconfig.ts_ls.setup({
         capabilities = capabilities,
-        root_dir = lspconfig.util.root_pattern("package.json", "tsconfig.json", ".git"),
+        root_dir = lspconfig.util.root_pattern('package.json', 'tsconfig.json', '.git'),
         single_file_support = true,
         settings = {
           typescript = {
@@ -182,19 +220,24 @@ require("lazy").setup({
     end,
   },
 
-  -- Autocompletion
+  -- ---------------------------------------------------------------------------
+  -- Autocompletion & snippets
+  -- ---------------------------------------------------------------------------
   {
     'hrsh7th/nvim-cmp',
     event = 'InsertEnter',
     dependencies = {
       'hrsh7th/cmp-nvim-lsp',
+      'hrsh7th/cmp-buffer',
+      'hrsh7th/cmp-path',
       'L3MON4D3/LuaSnip',
       'saadparwaiz1/cmp_luasnip',
-      'hrsh7th/cmp-path',
+      'rafamadriz/friendly-snippets',
     },
     config = function()
       local cmp = require('cmp')
       local luasnip = require('luasnip')
+      require('luasnip.loaders.from_vscode').lazy_load()
 
       cmp.setup({
         snippet = {
@@ -231,35 +274,15 @@ require("lazy").setup({
           { name = 'nvim_lsp' },
           { name = 'luasnip' },
           { name = 'path' },
+          { name = 'buffer' },
         },
       })
     end,
   },
 
-  -- Theme
-  {
-    'catppuccin/nvim',
-    lazy = false,
-    priority = 1000,
-    config = function()
-      vim.cmd.colorscheme('catppuccin-latte')
-    end,
-  },
-
-  -- Git integration
-  {
-    'lewis6991/gitsigns.nvim',
-    config = true,
-  },
-
-  -- Status line
-  {
-    'nvim-lualine/lualine.nvim',
-    dependencies = { 'nvim-tree/nvim-web-devicons' },
-    config = true,
-  },
-
-  -- Treesitter for better syntax highlighting
+  -- ---------------------------------------------------------------------------
+  -- Treesitter
+  -- ---------------------------------------------------------------------------
   {
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
@@ -271,14 +294,29 @@ require("lazy").setup({
     end,
   },
 
-  -- Essential UI and Utility Libraries
+  -- ---------------------------------------------------------------------------
+  -- Git
+  -- ---------------------------------------------------------------------------
   {
-    'nvim-lua/plenary.nvim',
-    'MunifTanjim/nui.nvim',
-    'nvim-tree/nvim-web-devicons',
+    'lewis6991/gitsigns.nvim',
+    config = true,
+  },
+  {
+    'sindrets/diffview.nvim',
   },
 
+  -- ---------------------------------------------------------------------------
+  -- Status line
+  -- ---------------------------------------------------------------------------
+  {
+    'nvim-lualine/lualine.nvim',
+    dependencies = { 'nvim-tree/nvim-web-devicons' },
+    config = true,
+  },
+
+  -- ---------------------------------------------------------------------------
   -- Notifications
+  -- ---------------------------------------------------------------------------
   {
     'rcarriga/nvim-notify',
     config = function()
@@ -291,32 +329,43 @@ require("lazy").setup({
     end,
   },
 
-  -- Debugging UI
+  -- ---------------------------------------------------------------------------
+  -- Debugging
+  -- ---------------------------------------------------------------------------
   {
     'rcarriga/nvim-dap-ui',
     dependencies = {
       'mfussenegger/nvim-dap',
-      'nvim-neotest/nvim-nio'
+      'jay-babu/mason-nvim-dap.nvim',
+      'nvim-neotest/nvim-nio',
     },
     config = function()
-      local dap, dapui = require('dap'), require('dapui')
+      require('mason-nvim-dap').setup({
+        ensure_installed = { 'codelldb' },
+        automatic_installation = true,
+      })
 
-      -- codelldb adapter configuration
+      local dap, dapui = require('dap'), require('dapui')
+      local mason_registry = require('mason-registry')
+      local codelldb = mason_registry.get_package('codelldb')
+      local extension_path = codelldb:get_install_path() .. '/extension/'
+      local codelldb_path = extension_path .. 'adapter/codelldb'
+
       dap.adapters.codelldb = {
         type = 'server',
-        port = "${port}",
+        port = '${port}',
         executable = {
-          command = '/usr/bin/lldb-vscode', -- Updated path to system lldb-vscode
-          args = { "--port", "${port}" },
+          command = codelldb_path,
+          args = { '--port', '${port}' },
+          detached = false,
         },
       }
 
-      -- C++ configuration
       dap.configurations.cpp = {
         {
-          name = "Launch file",
-          type = "codelldb",
-          request = "launch",
+          name = 'Launch file',
+          type = 'codelldb',
+          request = 'launch',
           program = function()
             return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/', 'file')
           end,
@@ -327,57 +376,55 @@ require("lazy").setup({
         },
       }
 
-      -- Link to C configuration as well
       dap.configurations.c = dap.configurations.cpp
 
       dapui.setup({
         layouts = {
           {
             elements = {
-              -- Elements can be strings or table with id and size keys.
-              { id = "scopes", size = 0.25 },
-              "breakpoints",
-              "stacks",
-              "watches",
+              { id = 'scopes', size = 0.25 },
+              'breakpoints',
+              'stacks',
+              'watches',
             },
-            size = 40, -- 40 columns
-            position = "left",
+            size = 40,
+            position = 'left',
           },
           {
             elements = {
-              "repl",
-              "console",
+              'repl',
+              'console',
             },
-            size = 0.25, -- 25% of total lines
-            position = "bottom",
+            size = 0.25,
+            position = 'bottom',
           },
         },
       })
 
-      -- Automatically open UI
-      dap.listeners.after.event_initialized["dapui_config"] = function()
+      dap.listeners.after.event_initialized['dapui_config'] = function()
         dapui.open()
       end
-      dap.listeners.before.event_terminated["dapui_config"] = function()
+      dap.listeners.before.event_terminated['dapui_config'] = function()
         dapui.close()
       end
-      dap.listeners.before.event_exited["dapui_config"] = function()
+      dap.listeners.before.event_exited['dapui_config'] = function()
         dapui.close()
       end
 
-      -- Debugging keymaps
       vim.keymap.set('n', '<leader>dt', dap.toggle_breakpoint, { desc = 'Toggle Breakpoint' })
       vim.keymap.set('n', '<f5>', dap.continue, { desc = 'Continue' })
       vim.keymap.set('n', '<f10>', dap.step_over, { desc = 'Step Over' })
       vim.keymap.set('n', '<f11>', dap.step_into, { desc = 'Step Into' })
       vim.keymap.set('n', '<s-f11>', dap.step_out, { desc = 'Step Out' })
       vim.keymap.set('n', '<leader>du', dapui.toggle, { desc = 'Toggle UI' })
-      vim.keymap.set('n', '<M-k>', require('dapui').eval, { desc = 'Evaluate under cursor' })
-      vim.keymap.set('v', '<M-k>', require('dapui').eval, { desc = 'Evaluate selection' })
+      vim.keymap.set('n', '<M-k>', dapui.eval, { desc = 'Evaluate under cursor' })
+      vim.keymap.set('v', '<M-k>', dapui.eval, { desc = 'Evaluate selection' })
     end,
   },
 
+  -- ---------------------------------------------------------------------------
   -- Formatting
+  -- ---------------------------------------------------------------------------
   {
     'stevearc/conform.nvim',
     opts = {
@@ -393,9 +440,8 @@ require("lazy").setup({
       format_on_save = false,
       formatters = {
         clang_format = {
-          -- Optional: specify custom clang-format options
           args = {
-            "--style={IndentWidth: 2, ColumnLimit: 100, AllowShortFunctionsOnASingleLine: Empty}"
+            '--style={IndentWidth: 2, ColumnLimit: 100, AllowShortFunctionsOnASingleLine: Empty}',
           },
         },
       },
@@ -408,26 +454,21 @@ require("lazy").setup({
     end,
   },
 
-  -- Snippets
+  -- ---------------------------------------------------------------------------
+  -- Markdown
+  -- ---------------------------------------------------------------------------
   {
-    'rafamadriz/friendly-snippets',
-    config = function()
-      require('luasnip.loaders.from_vscode').lazy_load()
-    end,
-  },
-  -- Markdown integration
-  {
-    "OXY2DEV/markview.nvim",
-    lazy = false, -- Recommended
-    -- ft = "markdown" -- If you decide to lazy-load anyway
-
+    'OXY2DEV/markview.nvim',
+    lazy = false,
     dependencies = {
-      "nvim-treesitter/nvim-treesitter",
-      "nvim-tree/nvim-web-devicons"
-    }
+      'nvim-treesitter/nvim-treesitter',
+      'nvim-tree/nvim-web-devicons',
+    },
   },
 
-  -- Task runner and job management
+  -- ---------------------------------------------------------------------------
+  -- Task runner
+  -- ---------------------------------------------------------------------------
   {
     'stevearc/overseer.nvim',
     dependencies = {
@@ -435,51 +476,48 @@ require("lazy").setup({
       'rcarriga/nvim-notify',
     },
     cmd = {
-      "OverseerOpen",
-      "OverseerClose",
-      "OverseerToggle",
-      "OverseerSaveBundle",
-      "OverseerLoadBundle",
-      "OverseerDeleteBundle",
-      "OverseerRunCmd",
-      "OverseerRun",
-      "OverseerInfo",
-      "OverseerBuild",
-      "OverseerQuickAction",
-      "OverseerTaskAction",
+      'OverseerOpen',
+      'OverseerClose',
+      'OverseerToggle',
+      'OverseerSaveBundle',
+      'OverseerLoadBundle',
+      'OverseerDeleteBundle',
+      'OverseerRunCmd',
+      'OverseerRun',
+      'OverseerInfo',
+      'OverseerBuild',
+      'OverseerQuickAction',
+      'OverseerTaskAction',
     },
     config = function()
       require('overseer').setup({
-        -- Templates for various task types
-        templates = { "builtin" },
-        -- Configure task list appearance
+        templates = { 'builtin' },
         task_list = {
-          direction = "right",
+          direction = 'right',
           min_width = 50,
           max_width = 80,
           bindings = {
-            ["?"] = "ShowHelp",
-            ["<CR>"] = "RunAction",
-            ["<C-e>"] = "Edit",
-            ["o"] = "Open",
-            ["<C-v>"] = "OpenVsplit",
-            ["<C-s>"] = "OpenSplit",
-            ["<C-f>"] = "OpenFloat",
-            ["<C-q>"] = "OpenQuickfix",
-            ["p"] = "TogglePreview",
-            ["<C-l>"] = "IncreaseDetail",
-            ["<C-h>"] = "DecreaseDetail",
-            ["L"] = "IncreaseAllDetail",
-            ["H"] = "DecreaseAllDetail",
-            ["["] = "DecreaseWidth",
-            ["]"] = "IncreaseWidth",
-            ["{"] = "PrevTask",
-            ["}"] = "NextTask",
+            ['?'] = 'ShowHelp',
+            ['<CR>'] = 'RunAction',
+            ['<C-e>'] = 'Edit',
+            ['o'] = 'Open',
+            ['<C-v>'] = 'OpenVsplit',
+            ['<C-s>'] = 'OpenSplit',
+            ['<C-f>'] = 'OpenFloat',
+            ['<C-q>'] = 'OpenQuickfix',
+            ['p'] = 'TogglePreview',
+            ['<C-l>'] = 'IncreaseDetail',
+            ['<C-h>'] = 'DecreaseDetail',
+            ['L'] = 'IncreaseAllDetail',
+            ['H'] = 'DecreaseAllDetail',
+            ['['] = 'DecreaseWidth',
+            [']'] = 'IncreaseWidth',
+            ['{'] = 'PrevTask',
+            ['}'] = 'NextTask',
           },
         },
       })
 
-      -- Add keymaps
       vim.keymap.set('n', '<leader>oo', '<cmd>OverseerToggle<CR>', { desc = 'Toggle Overseer' })
       vim.keymap.set('n', '<leader>or', '<cmd>OverseerRun<CR>', { desc = 'Run Overseer Task' })
       vim.keymap.set('n', '<leader>ob', '<cmd>OverseerBuild<CR>', { desc = 'Build Overseer Task' })
@@ -487,7 +525,9 @@ require("lazy").setup({
     end,
   },
 
-  -- Establish good command workflow and quit bad habits
+  -- ---------------------------------------------------------------------------
+  -- Workflow coaching
+  -- ---------------------------------------------------------------------------
   {
     'm4xshen/hardtime.nvim',
     dependencies = { 'MunifTanjim/nui.nvim', 'nvim-lua/plenary.nvim' },
@@ -500,58 +540,48 @@ require("lazy").setup({
       allow_different_key = true,
       enabled = true,
       restricted_keys = {
-        ["h"] = { "n", "x" },
-        ["j"] = { "n", "x" },
-        ["k"] = { "n", "x" },
-        ["l"] = { "n", "x" },
-        ["-"] = { "n", "x" },
-        ["+"] = { "n", "x" },
-        ["gj"] = { "n", "x" },
-        ["gk"] = { "n", "x" },
-        ["<CR>"] = { "n", "x" },
-        ["<C-M>"] = { "n", "x" },
-        ["<C-N>"] = { "n", "x" },
-        ["<C-P>"] = { "n", "x" },
+        ['h'] = { 'n', 'x' },
+        ['j'] = { 'n', 'x' },
+        ['k'] = { 'n', 'x' },
+        ['l'] = { 'n', 'x' },
+        ['-'] = { 'n', 'x' },
+        ['+'] = { 'n', 'x' },
+        ['gj'] = { 'n', 'x' },
+        ['gk'] = { 'n', 'x' },
+        ['<CR>'] = { 'n', 'x' },
+        ['<C-M>'] = { 'n', 'x' },
+        ['<C-N>'] = { 'n', 'x' },
+        ['<C-P>'] = { 'n', 'x' },
       },
       disabled_keys = {
-        ["<Up>"] = {},
-        ["<Down>"] = {},
-        ["<Left>"] = {},
-        ["<Right>"] = {},
+        ['<Up>'] = {},
+        ['<Down>'] = {},
+        ['<Left>'] = {},
+        ['<Right>'] = {},
       },
-      disabled_filetypes = { "qf", "netrw", "NvimTree", "lazy", "mason", "oil" },
+      disabled_filetypes = { 'qf', 'netrw', 'NvimTree', 'lazy', 'mason', 'oil' },
     },
   },
-  { -- Reminder for what I'm doing right now
+
+  -- ---------------------------------------------------------------------------
+  -- Context reminders
+  -- ---------------------------------------------------------------------------
+  {
     'Hashino/doing.nvim',
     config = function()
-      require('doing').setup {
-        -- default options
+      require('doing').setup({
         message_timeout = 2000,
         winbar = {
           enabled = true,
-          -- ignores buffers that match filetype
-          ignored_buffers = { 'NvimTree' }
+          ignored_buffers = { 'NvimTree' },
         },
-
         doing_prefix = 'Current Task: ',
         store = {
-          -- automatically create a .tasks when calling :Do
           auto_create_file = true,
           file_name = '.tasks',
         },
-      }
-      -- example on how to change the winbar highlight
+      })
       vim.api.nvim_set_hl(0, 'WinBar', { link = 'Search' })
     end,
   },
-  {
-    'sindrets/diffview.nvim'
-  }
 })
-
--- Additional keymaps
-vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<cr>', { desc = 'Clear search highlight' })
--- Window and File Navigation
-vim.keymap.set('n', "<leader>w", "<C-W>", { desc = 'Enter window mode' })
-vim.keymap.set('n', "<leader>e", ":Ex<CR>", { desc = 'Enter file navigation' })
