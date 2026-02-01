@@ -3,6 +3,15 @@
 -- =============================================================================
 vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
+local is_windows = vim.fn.has('win32') == 1 or vim.fn.has('win64') == 1
+local has_make = vim.fn.executable('make') == 1
+
+if not has_make then
+  vim.notify(
+    "telescope-fzf-native.nvim disabled: 'make' executable not found",
+    vim.log.levels.WARN
+  )
+end
 
 -- =============================================================================
 -- Editor options
@@ -91,7 +100,8 @@ require("lazy").setup({
       'nvim-lua/plenary.nvim',
       {
         'nvim-telescope/telescope-fzf-native.nvim',
-        build = 'make',
+        build = has_make and 'make' or nil,
+        cond = has_make,
       },
     },
     config = function()
@@ -106,7 +116,7 @@ require("lazy").setup({
           },
         },
       })
-      telescope.load_extension('fzf')
+      pcall(telescope.load_extension, 'fzf')
 
       vim.keymap.set('n', '<leader>ff', require('telescope.builtin').find_files, { desc = 'Find files' })
       vim.keymap.set('n', '<leader>fg', require('telescope.builtin').live_grep, { desc = 'Live grep' })
@@ -350,6 +360,9 @@ require("lazy").setup({
       local codelldb = mason_registry.get_package('codelldb')
       local extension_path = codelldb:get_install_path() .. '/extension/'
       local codelldb_path = extension_path .. 'adapter/codelldb'
+      if is_windows then
+        codelldb_path = codelldb_path .. '.exe'
+      end
 
       dap.adapters.codelldb = {
         type = 'server',
