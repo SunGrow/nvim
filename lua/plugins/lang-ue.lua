@@ -13,8 +13,18 @@ end, {
 })
 local is_ue_project = #uproject_files > 0
 
--- Auto-create .clangd in UE project root if missing (fixes UCLASS/GENERATED_BODY errors)
+-- Auto-start UNL server and create .clangd when in a UE project
 if is_ue_project then
+  -- Start UNL RPC server after plugins load (required by UBT, UEP, etc.)
+  vim.api.nvim_create_autocmd('User', {
+    pattern = 'LazyDone',
+    once = true,
+    callback = function()
+      vim.defer_fn(function()
+        pcall(vim.cmd, 'UNL start')
+      end, 100)
+    end,
+  })
   local project_root = vim.fn.fnamemodify(uproject_files[1], ':h')
   local clangd_path = project_root .. '/.clangd'
   if vim.fn.filereadable(clangd_path) == 0 then
