@@ -3,17 +3,41 @@
 
 -- Detect UE project by searching upward for any .uproject file
 -- Evaluated once at startup (lazy.nvim cond is session-level)
-local is_ue_project = (function()
-  local found = vim.fs.find(function(name)
-    return name:match('%.uproject$') ~= nil
-  end, {
-    upward = true,
-    type = 'file',
-    path = vim.fn.getcwd(),
-    limit = 1,
-  })
-  return #found > 0
-end)()
+local uproject_files = vim.fs.find(function(name)
+  return name:match('%.uproject$') ~= nil
+end, {
+  upward = true,
+  type = 'file',
+  path = vim.fn.getcwd(),
+  limit = 1,
+})
+local is_ue_project = #uproject_files > 0
+
+-- Auto-create .clangd in UE project root if missing (fixes UCLASS/GENERATED_BODY errors)
+if is_ue_project then
+  local project_root = vim.fn.fnamemodify(uproject_files[1], ':h')
+  local clangd_path = project_root .. '/.clangd'
+  if vim.fn.filereadable(clangd_path) == 0 then
+    local clangd_config = table.concat({
+      'CompileFlags:',
+      '  Add: [-D__INTELLISENSE__, -Wno-everything]',
+      '  Remove: [/Yu*, /Yc*, /FI*, /Fp*, -include-pch, -include]',
+      '',
+      'Diagnostics:',
+      '  Suppress: [pp_file_not_found, drv_unknown_argument, unknown_argument]',
+      '  ClangTidy:',
+      "    Remove: ['*']",
+      '',
+      'InlayHints:',
+      '  Enabled: Yes',
+      '  ParameterNames: Yes',
+      '  DeducedTypes: Yes',
+      '',
+    }, '\n')
+    vim.fn.writefile(vim.split(clangd_config, '\n'), clangd_path)
+    vim.notify('Created .clangd in ' .. project_root, vim.log.levels.INFO)
+  end
+end
 
 return {
   -- UNL.nvim: Core library (required by all taku25 plugins)
