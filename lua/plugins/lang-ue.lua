@@ -13,18 +13,8 @@ end, {
 })
 local is_ue_project = #uproject_files > 0
 
--- Auto-start UNL server and create .clangd when in a UE project
+-- Create .clangd when in a UE project (UNL auto-starts its RPC server by default)
 if is_ue_project then
-  -- Start UNL RPC server after plugins load (required by UBT, UEP, etc.)
-  vim.api.nvim_create_autocmd('User', {
-    pattern = 'LazyDone',
-    once = true,
-    callback = function()
-      vim.defer_fn(function()
-        pcall(vim.cmd, 'UNL start')
-      end, 100)
-    end,
-  })
   local project_root = vim.fn.fnamemodify(uproject_files[1], ':h')
   local clangd_path = project_root .. '/.clangd'
   if vim.fn.filereadable(clangd_path) == 0 then
@@ -82,7 +72,9 @@ return {
       'taku25/ULG.nvim',
       'taku25/UDB.nvim',
     },
-    opts = {},
+    config = function()
+      require('UnrealDev').setup({})
+    end,
   },
 
   -- UEP.nvim: Project explorer, file navigation, inheritance analysis
@@ -102,7 +94,7 @@ return {
       { '<leader>Ud', '<cmd>UEP find_derived<CR>', desc = 'Unreal: Find derived classes' },
       { '<leader>Up', '<cmd>UEP find_parents<CR>', desc = 'Unreal: Find parent classes' },
       { '<leader>Ui', '<cmd>UEP add_include<CR>', desc = 'Unreal: Add #include' },
-      { '<leader>Ut', '<cmd>UEP tree<CR>', desc = 'Unreal: Project tree' },
+      { '<leader>Um', '<cmd>UEP modules<CR>', desc = 'Unreal: Browse modules' },
       { '<leader>Ur', '<cmd>UEP refresh<CR>', desc = 'Unreal: Refresh project' },
     },
   },
@@ -159,7 +151,7 @@ return {
     'taku25/ULG.nvim',
     cond = is_ue_project,
     cmd = { 'ULG' },
-    dependencies = { 'taku25/UNL.nvim' },
+    dependencies = { 'taku25/UNL.nvim', 'taku25/UBT.nvim' },
     opts = {},
     -- stylua: ignore
     keys = {
@@ -179,8 +171,8 @@ return {
     opts = {},
     -- stylua: ignore
     keys = {
-      { '<leader>UD', '<cmd>UDB run<CR>', desc = 'Unreal: Debug (default target)' },
-      { '<leader>US', '<cmd>UDB run!<CR>', desc = 'Unreal: Debug (select target)' },
+      { '<leader>UD', '<cmd>UDB run_debug<CR>', desc = 'Unreal: Debug (default target)' },
+      { '<leader>US', '<cmd>UDB run_debug!<CR>', desc = 'Unreal: Debug (select target)' },
     },
   },
 }

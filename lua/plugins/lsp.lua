@@ -63,7 +63,16 @@ return {
         map('<leader>li', '<cmd>LspInfo<CR>', 'LSP info')
 
         -- clangd-specific: switch between header and source
-        if vim.lsp.get_clients({ bufnr = event.buf, name = 'clangd' })[1] then
+        -- (manual implementation — ClangdSwitchSourceHeader only exists via nvim-lspconfig)
+        local clangd = vim.lsp.get_clients({ bufnr = event.buf, name = 'clangd' })[1]
+        if clangd then
+          vim.api.nvim_buf_create_user_command(event.buf, 'ClangdSwitchSourceHeader', function()
+            local params = { uri = vim.uri_from_bufnr(event.buf) }
+            clangd:request('textDocument/switchSourceHeader', params, function(err, result)
+              if err or not result or result == '' then return end
+              vim.cmd.edit(vim.uri_to_fname(result))
+            end, event.buf)
+          end, { desc = 'Switch between source/header (clangd)' })
           map('<leader>lh', '<cmd>ClangdSwitchSourceHeader<CR>', 'Switch header/source')
         end
 

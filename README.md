@@ -262,7 +262,7 @@ These vim-unimpaired-style mappings are built-in defaults.
 | `<Space>Ud` | Find derived classes |
 | `<Space>Up` | Find parent classes |
 | `<Space>Ui` | Add #include |
-| `<Space>Ut` | Project tree |
+| `<Space>Um` | Browse modules |
 | `<Space>Ur` | Refresh project cache |
 | `<Space>Ub` | Build |
 | `<Space>UB` | Build (pick target) |

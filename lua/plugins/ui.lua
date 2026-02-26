@@ -16,10 +16,7 @@ return {
           if ok then ram_mb = math.floor(rss / 1024 / 1024) end
         end))
       end
-      -- Refresh statusline on LSP progress (clangd indexing %)
-      vim.api.nvim_create_autocmd('LspProgress', {
-        callback = function() vim.cmd.redrawstatus() end,
-      })
+      -- NOTE: LSP progress display is handled by fidget.nvim, not the statusline.
     end,
     opts = {
       options = {
@@ -43,18 +40,9 @@ return {
             icon = '',
             color = { fg = '#7aa2f7' },
           },
-          {
-            function()
-              local status = vim.lsp.status()
-              if status and status ~= '' then
-                if #status > 40 then status = status:sub(1, 37) .. '...' end
-                return status
-              end
-              return ''
-            end,
-            icon = '',
-            color = { fg = '#9ece6a' },
-          },
+          -- NOTE: LSP progress is handled by fidget.nvim (top-right spinner).
+          -- fidget consumes the LSP progress ring buffer, so vim.lsp.status()
+          -- returns empty when fidget is active. Don't duplicate it here.
         },
         lualine_x = {
           {
