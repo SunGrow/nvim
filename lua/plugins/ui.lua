@@ -18,6 +18,7 @@ return {
         { '<leader>g', group = 'Git' },
         { '<leader>l', group = 'LSP' },
         { '<leader>c', group = 'Code' },
+        { '<leader>u', group = 'UI' },
       },
     },
   },
