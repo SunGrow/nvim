@@ -19,6 +19,8 @@ return {
         { '<leader>l', group = 'LSP' },
         { '<leader>c', group = 'Code' },
         { '<leader>u', group = 'UI' },
+        { '<leader>d', group = 'Debug' },
+        { '<leader>U', group = 'Unreal' },
       },
     },
   },

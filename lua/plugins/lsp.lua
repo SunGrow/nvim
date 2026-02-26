@@ -6,7 +6,7 @@ return {
     {
       'mason-org/mason-lspconfig.nvim',
       opts = {
-        ensure_installed = { 'lua_ls' },
+        ensure_installed = { 'lua_ls', 'clangd' },
         automatic_enable = true,
       },
     },
@@ -30,6 +30,24 @@ return {
       capabilities = capabilities,
     })
 
+    -- Configure clangd for C++ (optimized for large codebases)
+    vim.lsp.config('clangd', {
+      capabilities = capabilities,
+      cmd = {
+        'clangd',
+        '--background-index',
+        '--background-index-priority=background',
+        '--clang-tidy',
+        '--header-insertion=iwyu',
+        '--completion-style=detailed',
+        '--function-arg-placeholders=false',
+        '--pch-storage=memory',
+        '-j=8',
+        '--limit-results=500',
+        '--offset-encoding=utf-8',
+      },
+    })
+
     -- LspAttach: buffer-local keymaps for non-default bindings
     vim.api.nvim_create_autocmd('LspAttach', {
       group = vim.api.nvim_create_augroup('lsp-attach', { clear = true }),
@@ -43,6 +61,11 @@ return {
         map('gD', vim.lsp.buf.declaration, 'Go to declaration')
         map('<leader>ld', vim.diagnostic.open_float, 'Diagnostics float')
         map('<leader>li', '<cmd>LspInfo<CR>', 'LSP info')
+
+        -- clangd-specific: switch between header and source
+        if vim.lsp.get_clients({ bufnr = event.buf, name = 'clangd' })[1] then
+          map('<leader>lh', '<cmd>ClangdSwitchSourceHeader<CR>', 'Switch header/source')
+        end
 
         -- Built-in 0.11 defaults (NOT overridden):
         -- grn = rename, gra = code action (n,v), grr = references

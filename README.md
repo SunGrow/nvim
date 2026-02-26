@@ -8,7 +8,8 @@ A performance-first, extensible Neovim configuration built on Neovim 0.11+ with 
 2. **Lazy everything** — all plugins lazy-loaded; startup target < 50ms
 3. **Modular** — one file per concern in `lua/plugins/`; add/remove features by adding/removing files
 4. **Discoverable** — which-key.nvim popup shows available keybindings as you type
-5. **Minimal dependencies** — ~14 plugins total (down from 31)
+5. **Minimal dependencies** — core config is ~14 plugins; language modules load on demand
+6. **Zero overhead** — language-specific features (UE5, C++ debugging) only load when relevant project files are detected
 
 ## Prerequisites
 
@@ -20,6 +21,9 @@ A performance-first, extensible Neovim configuration built on Neovim 0.11+ with 
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | yes | Telescope live grep |
 | [make](https://www.gnu.org/software/make/) | optional | Builds telescope-fzf-native for faster sorting |
 | C compiler (gcc/clang) | optional | Treesitter parser compilation |
+| [fd](https://github.com/sharkdp/fd) | UE5 only | UEP.nvim project file scanning |
+| [Rust/Cargo](https://rustup.rs/) | UE5 only | UNL.nvim native scanner build |
+| [LLVM/clang-format](https://llvm.org/) | C++ only | C/C++ code formatting |
 
 ### Windows (scoop)
 
@@ -27,6 +31,9 @@ A performance-first, extensible Neovim configuration built on Neovim 0.11+ with 
 scoop install neovim git ripgrep make
 scoop bucket add nerd-fonts
 scoop install JetBrainsMono-NF
+# For C++ / UE5 development (optional):
+scoop install llvm fd rustup
+rustup default stable
 ```
 
 ### Windows (winget)
@@ -86,7 +93,9 @@ nvim/
 │       ├── lsp.lua           LSP + mason + lazydev
 │       ├── completion.lua    blink.cmp
 │       ├── formatting.lua    conform.nvim
-│       └── git.lua           gitsigns
+│       ├── git.lua           gitsigns
+│       ├── lang-cpp.lua      C++ DAP (nvim-dap + codelldb)
+│       └── lang-ue.lua       Unreal Engine 5 (taku25 suite, conditional)
 └── README.md
 ```
 
@@ -108,6 +117,22 @@ nvim/
 | [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) | Status line |
 | [which-key.nvim](https://github.com/folke/which-key.nvim) | Keymap popup |
 | [hardtime.nvim](https://github.com/m4xshen/hardtime.nvim) | Vim motion training |
+| [nvim-dap](https://github.com/mfussenegger/nvim-dap) | Debug Adapter Protocol client |
+| [nvim-dap-ui](https://github.com/rcarriga/nvim-dap-ui) | Debug UI (watches, breakpoints, stack) |
+| [mason-nvim-dap](https://github.com/jay-babu/mason-nvim-dap.nvim) | DAP adapter installer |
+
+### Unreal Engine 5 (conditional — loaded only in UE projects)
+
+| Plugin | Purpose |
+|--------|---------|
+| [UNL.nvim](https://github.com/taku25/UNL.nvim) | Core library (Rust scanner, RPC server) |
+| [UnrealDev.nvim](https://github.com/taku25/UnrealDev.nvim) | Meta-plugin (`:UDEV` unified command) |
+| [UEP.nvim](https://github.com/taku25/UEP.nvim) | Project navigation, inheritance, includes |
+| [UBT.nvim](https://github.com/taku25/UBT.nvim) | Build, compile_commands.json, UHT |
+| [UCM.nvim](https://github.com/taku25/UCM.nvim) | Class creation, header/source switching |
+| [UEA.nvim](https://github.com/taku25/UEA.nvim) | Blueprint/asset tracking, Code Lens |
+| [ULG.nvim](https://github.com/taku25/ULG.nvim) | Real-time log viewer |
+| [UDB.nvim](https://github.com/taku25/UDB.nvim) | Debug integration (wraps nvim-dap for UE) |
 
 ## Keybindings
 
@@ -166,6 +191,7 @@ Custom LSP keymaps (added by this config):
 | `gD` | Go to declaration |
 | `<Space>ld` | Show diagnostic float |
 | `<Space>li` | LSP info |
+| `<Space>lh` | Switch header/source (C/C++ only, via clangd) |
 
 ### Diagnostics — Built-in Neovim 0.11
 
@@ -204,6 +230,51 @@ These vim-unimpaired-style mappings are built-in defaults.
 | `<Space>cf` | n | Format buffer |
 | `gcc` | n | Toggle comment (line) — built-in |
 | `gc` | v | Toggle comment (selection) — built-in |
+
+### Debug — `<Space>d`
+
+| Key | Mode | Action |
+|-----|------|--------|
+| `<Space>db` | n | Toggle breakpoint |
+| `<Space>dB` | n | Conditional breakpoint |
+| `<Space>dc` / `F5` | n | Continue / Start |
+| `<Space>di` / `F11` | n | Step into |
+| `<Space>do` / `F10` | n | Step over |
+| `<Space>dO` / `Shift+F11` | n | Step out |
+| `<Space>dr` | n | Toggle REPL |
+| `<Space>dl` | n | Run last |
+| `<Space>dt` | n | Terminate |
+| `<Space>du` | n | Toggle DAP UI |
+| `<Space>de` | n, v | Eval expression |
+| `F9` | n | Toggle breakpoint |
+
+### Unreal Engine — `<Space>U`
+
+> These keymaps only exist when Neovim is opened inside a directory containing a `.uproject` file.
+
+| Key | Action |
+|-----|--------|
+| `<Space>Uf` | Find project files |
+| `<Space>Ug` | Grep project |
+| `<Space>Uc` | Browse classes |
+| `<Space>Us` | Browse structs |
+| `<Space>Ue` | Browse enums |
+| `<Space>Ud` | Find derived classes |
+| `<Space>Up` | Find parent classes |
+| `<Space>Ui` | Add #include |
+| `<Space>Ut` | Project tree |
+| `<Space>Ur` | Refresh project cache |
+| `<Space>Ub` | Build |
+| `<Space>UB` | Build (pick target) |
+| `<Space>Uj` | Generate compile_commands.json |
+| `<Space>Uh` | Generate headers (UHT) |
+| `<Space>Un` | New UE class |
+| `<Space>Uo` | Switch header/source (UE) |
+| `<Space>Ua` | Blueprint usages |
+| `<Space>UA` | Asset references |
+| `<Space>Ul` | Start log viewer |
+| `<Space>UD` | Debug (default target) |
+| `<Space>US` | Debug (select target) |
 
 ### Completion (blink.cmp)
 
@@ -250,3 +321,32 @@ Create a file like `lua/plugins/lang-python.lua` that bundles:
 - DAP config (when ready)
 
 This keeps language support modular and removable.
+
+## Unreal Engine 5 Setup
+
+The UE5 suite loads automatically when Neovim is opened inside a project containing a `.uproject` file. Outside UE projects, these plugins have **zero overhead** — they are completely excluded from loading.
+
+### First-time setup
+
+1. Install prerequisites: `scoop install fd rustup` then `rustup default stable`
+2. Open Neovim — lazy.nvim will install UE plugins and build the UNL.nvim Rust scanner
+3. Create a `.clangd` file in your UE project root:
+
+```yaml
+CompileFlags:
+  Add: [-D__INTELLISENSE__, -Wno-everything]
+  Remove: [/Yu*, /Yc*, /FI*, /Fp*, -include-pch, -include]
+Diagnostics:
+  Suppress: [pp_file_not_found, drv_unknown_argument, unknown_argument]
+  ClangTidy:
+    Remove: ['*']
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+```
+
+4. Open Neovim in your UE project root
+5. Run `:UBT gen_compile_db` to generate `compile_commands.json` for clangd
+6. Run `:UEP refresh` to scan the project structure
+7. clangd will begin background indexing (first run takes hours; subsequent runs are fast)

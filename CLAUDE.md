@@ -22,10 +22,10 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
 
 ## Conventions
 
-- Leader key is `<Space>`, with mnemonic groups: `f`=Find, `g`=Git, `l`=LSP, `c`=Code
+- Leader key is `<Space>`, with mnemonic groups: `f`=Find, `g`=Git, `l`=LSP, `c`=Code, `d`=Debug, `U`=Unreal
 - Every keymap must have a `desc` parameter for which-key discoverability
 - Plugin files return a table (single spec) or list of tables (multiple specs)
-- Only `lua_ls` is in `ensure_installed` — language-specific servers/formatters/DAP are deferred to future `lua/plugins/lang-*.lua` modules
+- Language-specific bundles live in `lua/plugins/lang-*.lua` modules (e.g., `lang-cpp.lua`, `lang-ue.lua`)
 
 ## Adding a New Plugin
 
@@ -36,6 +36,37 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 1. Add to `ensure_installed` in `lua/plugins/lsp.lua`
 2. Optionally call `vim.lsp.config('server_name', { capabilities = capabilities, ... })` in the same file
 3. mason-lspconfig `automatic_enable` handles the rest
+
+## Unreal Engine 5 Support
+
+`lua/plugins/lang-ue.lua` provides the full taku25 UnrealDev.nvim suite with **zero overhead** outside UE projects. All UE plugins use `cond = is_ue_project` which checks for a `.uproject` file at startup via `vim.fs.find`.
+
+**How it works:**
+- Open Neovim in a UE project directory (containing `.uproject`) → full UE suite loads
+- Open Neovim anywhere else → zero UE plugins load, zero memory/startup cost
+
+**Prerequisites:** Rust/Cargo, fd, ripgrep (already present)
+
+**Per-project setup:** Each UE project root needs a `.clangd` file:
+```yaml
+CompileFlags:
+  Add: [-D__INTELLISENSE__, -Wno-everything]
+  Remove: [/Yu*, /Yc*, /FI*, /Fp*, -include-pch, -include]
+Diagnostics:
+  Suppress: [pp_file_not_found, drv_unknown_argument, unknown_argument]
+  ClangTidy:
+    Remove: ['*']
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+```
+
+**First-time UE project workflow:**
+1. Open Neovim in the UE project root
+2. `:UBT gen_compile_db` — generates `compile_commands.json` for clangd
+3. `:UEP refresh` — scans project structure
+4. clangd will begin background indexing (first run: hours, subsequent: fast)
 
 ## Testing Changes
 
