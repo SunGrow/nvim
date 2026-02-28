@@ -342,7 +342,65 @@ return {
     end,
     -- stylua: ignore
     keys = {
-      { '<leader>Un', '<cmd>UCM new<CR>', desc = 'Unreal: New class' },
+      { '<leader>Un', function()
+          -- Wrapper: bypass broken cmd/new.lua (double-prompt + value unwrap bug).
+          -- Auto-resolves module from current buffer or project Source/ directories.
+          local project_root = ctx.ue_project_root
+          local find_module_root = require('UNL.finder').module.find_module_root
+
+          -- Try current buffer's directory first
+          local buf_dir = vim.fn.expand('%:p:h')
+          local module_root = find_module_root(buf_dir)
+
+          if module_root then
+            -- Buffer is inside a module — use it directly
+            require('UCM.api').new_class({ target_dir = module_root })
+            return
+          end
+
+          -- Not in a module — scan Source/ and Plugins/*/Source/ for .Build.cs
+          local modules = {}
+          local scan_dirs = { project_root .. '/Source' }
+          -- Also scan plugin source directories
+          local plugins_dir = project_root .. '/Plugins'
+          if vim.fn.isdirectory(plugins_dir) == 1 then
+            for name, type in vim.fs.dir(plugins_dir) do
+              if type == 'directory' then
+                local plugin_src = plugins_dir .. '/' .. name .. '/Source'
+                if vim.fn.isdirectory(plugin_src) == 1 then
+                  table.insert(scan_dirs, plugin_src)
+                end
+              end
+            end
+          end
+          for _, scan_dir in ipairs(scan_dirs) do
+            if vim.fn.isdirectory(scan_dir) == 1 then
+              for name, type in vim.fs.dir(scan_dir) do
+                if type == 'directory' then
+                  local candidate = scan_dir .. '/' .. name
+                  if find_module_root(candidate) then
+                    table.insert(modules, { name = name, path = candidate })
+                  end
+                end
+              end
+            end
+          end
+
+          if #modules == 0 then
+            vim.notify('[UCM] No UE modules found under Source/', vim.log.levels.ERROR)
+          elseif #modules == 1 then
+            require('UCM.api').new_class({ target_dir = modules[1].path })
+          else
+            vim.ui.select(modules, {
+              prompt = 'Select target module:',
+              format_item = function(m) return m.name end,
+            }, function(choice)
+              if choice then
+                require('UCM.api').new_class({ target_dir = choice.path })
+              end
+            end)
+          end
+        end, desc = 'Unreal: New class' },
       { '<leader>Uk', '<cmd>UCM specifiers<CR>', desc = 'Unreal: Insert specifiers' },
       { '<leader>cI', '<cmd>UCM create_impl<CR>', desc = 'Generate .cpp from .h' },
     },
