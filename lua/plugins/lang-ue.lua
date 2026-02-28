@@ -344,23 +344,86 @@ return {
     keys = {
       { '<leader>Un', function()
           -- Wrapper: bypass broken cmd/new.lua (double-prompt + value unwrap bug).
-          -- Auto-resolves module from current buffer or project Source/ directories,
-          -- then lets user choose class vs struct before dispatching.
+          -- Flow: resolve module → class/struct → pick directory → UCM name prompt → parent picker.
           local project_root = ctx.ue_project_root
           local find_module_root = require('UNL.finder').module.find_module_root
 
-          local function dispatch(target_dir)
+          -- Step 3: scan subdirs within module via fd, let user pick, then dispatch
+          local function pick_dir_and_dispatch(module_root, kind)
+            local fd_cmd = {
+              'fd', '.', module_root,
+              '--type', 'd',
+              '--path-separator', '/',
+              '--exclude', 'Intermediate',
+              '--exclude', 'Binaries',
+              '--exclude', 'Saved',
+            }
+            vim.system(fd_cmd, { text = true }, vim.schedule_wrap(function(result)
+              local dirs = {}
+              -- Module root itself as first option (e.g., "Public/" or "Private/" directly)
+              local root_display = vim.fn.fnamemodify(module_root, ':t')
+              table.insert(dirs, { display = root_display .. '/ (module root)', path = module_root })
+              if result.code == 0 and result.stdout ~= '' then
+                for line in result.stdout:gmatch('[^\r\n]+') do
+                  local rel = line:sub(#module_root + 2) -- strip module_root prefix + slash
+                  if rel ~= '' then
+                    table.insert(dirs, { display = rel, path = line })
+                  end
+                end
+              end
+
+              if #dirs == 1 then
+                -- Only module root — use it directly
+                if kind == 'Class' then
+                  require('UCM.api').new_class({ target_dir = module_root })
+                else
+                  require('UCM.api').new_struct({ target_dir = module_root })
+                end
+                return
+              end
+
+              -- Use Telescope for the directory picker (handles large lists well)
+              local pickers = require('telescope.pickers')
+              local finders = require('telescope.finders')
+              local conf = require('telescope.config').values
+              local actions = require('telescope.actions')
+              local action_state = require('telescope.actions.state')
+
+              pickers.new({}, {
+                prompt_title = 'Select target directory',
+                finder = finders.new_table({
+                  results = dirs,
+                  entry_maker = function(entry)
+                    return { value = entry.path, display = entry.display, ordinal = entry.display }
+                  end,
+                }),
+                sorter = conf.generic_sorter({}),
+                attach_mappings = function(bufnr)
+                  actions.select_default:replace(function()
+                    local entry = action_state.get_selected_entry()
+                    actions.close(bufnr)
+                    if not entry then return end
+                    if kind == 'Class' then
+                      require('UCM.api').new_class({ target_dir = entry.value })
+                    else
+                      require('UCM.api').new_struct({ target_dir = entry.value })
+                    end
+                  end)
+                  return true
+                end,
+              }):find()
+            end))
+          end
+
+          -- Step 2: class/struct selection, then directory picker
+          local function dispatch(module_root)
             vim.ui.select({ 'Class', 'Struct' }, { prompt = 'Create:' }, function(kind)
               if not kind then return end
-              if kind == 'Class' then
-                require('UCM.api').new_class({ target_dir = target_dir })
-              else
-                require('UCM.api').new_struct({ target_dir = target_dir })
-              end
+              pick_dir_and_dispatch(module_root, kind)
             end)
           end
 
-          -- Try current buffer's directory first
+          -- Step 1: resolve module from buffer or scan project
           local buf_dir = vim.fn.expand('%:p:h')
           local module_root = find_module_root(buf_dir)
 
