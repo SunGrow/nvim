@@ -63,6 +63,8 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 - blink-cmp-unreal extends blink.cmp via lazy.nvim spec merging (`optional = true` + `opts_extend`)
 - UBT presets are pinned with explicit TargetName values (UBT derives invalid names on Windows by default)
 - UNL Telescope callback picker is monkey-patched in `lang-ue.lua` to fix prompt buffer crashes on dynamic selection
+- UCM parent picker uses UNL streaming picker (`source.type = 'callback'`) instead of raw `finders.new_table` — the latter breaks at UE-scale datasets (57K+ entries). Entries are priority-sorted: engine base classes (static list) → main game module → plugins → everything else
+- `<leader>Un` auto-runs `UBT gen_compile_db` after successful class/struct creation via the UCM `on_complete` callback, so clangd immediately picks up new files
 
 **Prerequisites:** Rust/Cargo, fd, ripgrep
 

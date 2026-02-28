@@ -287,7 +287,7 @@ These vim-unimpaired-style mappings are built-in defaults.
 | `<Space>UG` | Go to definition (UE) | UNL reflection index |
 | `<Space>UI` | Go to implementation (UE) | UNL reflection index |
 | `<Space>Uh` | Generate headers (UHT) | Unreal Header Tool |
-| `<Space>Un` | New UE class | UCLASS scaffold |
+| `<Space>Un` | New UE class/struct | UCLASS/USTRUCT scaffold + auto compile_commands regen |
 | `<Space>Uk` | Insert UE specifiers | UPROPERTY/UFUNCTION |
 | `<Space>Ua` | Blueprint usages | Cross-language BP/C++ |
 | `<Space>UA` | Asset references | UE asset registry |

@@ -6,6 +6,32 @@ local ctx = require('core.context')
 local is_ue_project = ctx.is_ue
 local project_name = ctx.ue_project_name
 
+-- Common gameplay framework parent classes — guaranteed available even before UNL DB scan completes.
+-- Also serve as Tier 1 (highest priority) in the parent picker ordering.
+local ENGINE_BASE_CLASSES = {
+  'UObject',
+  'AActor', 'APawn', 'ACharacter', 'ADefaultPawn',
+  'AController', 'APlayerController', 'AAIController',
+  'AGameModeBase', 'AGameMode',
+  'AGameStateBase', 'AGameState',
+  'APlayerState', 'AInfo',
+  'AHUD', 'APlayerCameraManager',
+  'UActorComponent', 'USceneComponent',
+  'UGameInstanceSubsystem', 'UWorldSubsystem', 'ULocalPlayerSubsystem',
+  'UGameInstance',
+  'UUserWidget',
+  'UBlueprintFunctionLibrary',
+  'UAnimInstance',
+  'UDeveloperSettings',
+  'UPrimaryDataAsset', 'UDataAsset',
+}
+local ENGINE_BASE_SET = {}
+for _, name in ipairs(ENGINE_BASE_CLASSES) do ENGINE_BASE_SET[name] = true end
+
+local ENGINE_BASE_STRUCTS = { 'FTableRowBase' }
+local ENGINE_BASE_STRUCT_SET = {}
+for _, name in ipairs(ENGINE_BASE_STRUCTS) do ENGINE_BASE_STRUCT_SET[name] = true end
+
 -- Compatibility shim for plugins that call string:starts_with(...)
 if string.starts_with == nil then
   function string.starts_with(str, prefix)
@@ -368,8 +394,9 @@ return {
                       value = name,
                       display = string.format('%s  (%s)', name, vim.fn.fnamemodify(info.path or '', ':t')),
                       filename = info.path,
+                      module_name = info.module_name,
                     })
-                    class_data_map[name] = { header_file = info.path, base_class = info.base_class }
+                    class_data_map[name] = { header_file = info.path, base_class = info.base_class, module_name = info.module_name }
                   end
                 end
               end
@@ -388,8 +415,9 @@ return {
                       value = name,
                       display = string.format('%s  (%s)', name, vim.fn.fnamemodify(info.path or '', ':t')),
                       filename = info.path,
+                      module_name = info.module_name,
                     })
-                    struct_data_map[name] = { header_file = info.path, base_struct = info.base_class }
+                    struct_data_map[name] = { header_file = info.path, base_struct = info.base_class, module_name = info.module_name }
                   end
                 end
               end
@@ -397,6 +425,8 @@ return {
           )
 
           -- Step 5: show parent picker from pre-fetched data, then call UCM direct mode
+          -- Uses UNL streaming picker (proven with 57K+ entries) instead of raw Telescope finders.new_table.
+          -- Entries are priority-sorted: Engine base > main game module > plugins > everything else.
           local function show_parent_picker(kind, cls_name, target_dir)
             local choices = kind == 'Class' and prefetch.classes or prefetch.structs
 
@@ -424,54 +454,88 @@ return {
               return
             end
 
-            local pickers = require('telescope.pickers')
-            local finders = require('telescope.finders')
-            local conf = require('telescope.config').values
-            local actions = require('telescope.actions')
-            local action_state = require('telescope.actions.state')
+            -- Build priority-sorted list: Tier 1 (engine base) > Tier 2 (main module) > Tier 3 (plugins) > Tier 4 (rest)
+            local base_set = kind == 'Class' and ENGINE_BASE_SET or ENGINE_BASE_STRUCT_SET
+            local static_list = kind == 'Class' and ENGINE_BASE_CLASSES or ENGINE_BASE_STRUCTS
+            local tiers = { {}, {}, {}, {} }
+            local seen = {}
 
-            pickers.new({}, {
-              prompt_title = 'Select parent ' .. kind:lower(),
-              finder = finders.new_table({
-                results = choices,
-                entry_maker = function(item)
-                  return {
-                    value = item.value,
-                    display = item.display,
-                    ordinal = item.value,
-                    filename = item.filename,
-                  }
+            for _, item in ipairs(choices) do
+              if not seen[item.value] then
+                seen[item.value] = true
+                local tier
+                if base_set[item.value] then
+                  tier = 1
+                elseif item.module_name == project_name then
+                  tier = 2
+                elseif item.filename and item.filename:find('/Plugins/', 1, true) then
+                  tier = 3
+                else
+                  tier = 4
+                end
+                table.insert(tiers[tier], item)
+              end
+            end
+
+            -- Add static engine classes not already found in DB
+            for _, name in ipairs(static_list) do
+              if not seen[name] then
+                seen[name] = true
+                table.insert(tiers[1], { value = name, display = name .. '  (Engine)', filename = '' })
+              end
+            end
+
+            -- Sort each tier alphabetically, then concatenate
+            local sorted = {}
+            for _, bucket in ipairs(tiers) do
+              table.sort(bucket, function(a, b) return a.value < b.value end)
+              for _, item in ipairs(bucket) do
+                table.insert(sorted, item)
+              end
+            end
+
+            -- Use UNL streaming picker (routes through patched run_callback)
+            local data_map = kind == 'Class' and class_data_map or struct_data_map
+            require('UNL.picker').open({
+              kind = 'ucm_parent_picker',
+              title = kind == 'Class' and '  Select Parent Class' or '  Select Parent Struct',
+              source = {
+                type = 'callback',
+                fn = function(push)
+                  push(sorted)
                 end,
-              }),
-              sorter = conf.generic_sorter({}),
-              previewer = conf.file_previewer({}),
-              attach_mappings = function(bufnr)
-                actions.select_default:replace(function()
-                  local entry = action_state.get_selected_entry()
-                  actions.close(bufnr)
-                  if not entry then return end
-                  local parent = entry.value
-                  if kind == 'Class' then
-                    local header = class_data_map[parent] and class_data_map[parent].header_file
-                    require('UCM.api').new_class({
-                      class_name = cls_name,
-                      parent_class = parent,
-                      target_dir = target_dir,
-                      parent_class_header = header,
-                      skip_confirmation = true,
-                    })
-                  else
-                    require('UCM.api').new_struct({
-                      struct_name = cls_name,
-                      parent_struct = parent,
-                      target_dir = target_dir,
-                      skip_confirmation = true,
-                    })
+              },
+              preview_enabled = true,
+              on_confirm = function(selected)
+                if not selected then return end
+                local parent = type(selected) == 'table' and selected.value or selected
+                -- Regenerate compile_commands.json so clangd picks up the new files
+                local function on_complete(success)
+                  if success then
+                    vim.cmd('UBT gen_compile_db')
                   end
-                end)
-                return true
+                end
+                if kind == 'Class' then
+                  local header = data_map[parent] and data_map[parent].header_file
+                  require('UCM.api').new_class({
+                    class_name = cls_name,
+                    parent_class = parent,
+                    target_dir = target_dir,
+                    parent_class_header = header,
+                    skip_confirmation = true,
+                    on_complete = on_complete,
+                  })
+                else
+                  require('UCM.api').new_struct({
+                    struct_name = cls_name,
+                    parent_struct = parent,
+                    target_dir = target_dir,
+                    skip_confirmation = true,
+                    on_complete = on_complete,
+                  })
+                end
               end,
-            }):find()
+            })
           end
 
           -- Step 4: ask for name, then show parent picker
