@@ -1,3 +1,8 @@
+-- Detect UE project for clangd config adjustments
+local is_ue_project = #vim.fs.find(function(name)
+  return name:match('%.uproject$') ~= nil
+end, { upward = true, type = 'file', path = vim.fn.getcwd(), limit = 1 }) > 0
+
 return {
   'neovim/nvim-lspconfig',
   event = { 'BufReadPre', 'BufNewFile' },
@@ -30,22 +35,37 @@ return {
       capabilities = capabilities,
     })
 
-    -- Configure clangd for C++ (optimized for large codebases)
-    vim.lsp.config('clangd', {
-      capabilities = capabilities,
-      cmd = {
-        'clangd',
-        '--background-index',
-        '--background-index-priority=background',
+    -- Build clangd command (UE-aware)
+    local clangd_cmd = {
+      'clangd',
+      '--background-index',
+      '--background-index-priority=background',
+      '--completion-style=detailed',
+      '--function-arg-placeholders=false',
+      '-j=8',
+      '--limit-results=500',
+    }
+    if is_ue_project then
+      -- UE: no header insertion (iwyu breaks .generated.h include order),
+      -- no clang-tidy (.clangd removes all checks anyway, saves init time),
+      -- disk PCH storage (UE PCH files are 100MB+, memory mode causes OOM)
+      vim.list_extend(clangd_cmd, {
+        '--header-insertion=never',
+        '--pch-storage=disk',
+      })
+    else
+      vim.list_extend(clangd_cmd, {
         '--clang-tidy',
         '--header-insertion=iwyu',
-        '--completion-style=detailed',
-        '--function-arg-placeholders=false',
         '--pch-storage=memory',
-        '-j=8',
-        '--limit-results=500',
-        '--offset-encoding=utf-8',
-      },
+      })
+    end
+
+    -- Configure clangd for C++
+    -- NOTE: --offset-encoding removed — Neovim 0.11 negotiates encoding natively
+    vim.lsp.config('clangd', {
+      capabilities = capabilities,
+      cmd = clangd_cmd,
     })
 
     -- LspAttach: buffer-local keymaps for non-default bindings

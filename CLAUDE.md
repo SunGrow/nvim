@@ -18,7 +18,8 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
 - LSP uses Neovim 0.11 native `vim.lsp.config()` + mason-lspconfig v2 `automatic_enable` — NOT the old `lspconfig.X.setup()` pattern
 - Completion is blink.cmp (NOT nvim-cmp) with `fuzzy.implementation = "lua"` to avoid Rust dependencies on Windows
 - LSP capabilities come from `require('blink.cmp').get_lsp_capabilities()` and must be passed to `vim.lsp.config()`
-- Neovim 0.11 built-in keymaps (grn, gra, grr, gri, grt, gO, K, `<C-s>`, [d, ]d, gcc, gc) are intentionally NOT overridden — the config only adds `gd`, `gD`, `<leader>ld`, `<leader>li`
+- Neovim 0.11 built-in keymaps (grn, gra, grr, gri, grt, gO, K, `<C-s>`, [d, ]d, gcc, gc) are intentionally NOT overridden — the config only adds `gd`, `gD`, `<leader>ld`, `<leader>li`, `<leader>lh`
+- LSP progress uses fidget.nvim (top-right spinner), NOT lualine — fidget consumes the progress ring buffer so `vim.lsp.status()` returns empty when active
 
 ## Conventions
 
@@ -39,33 +40,35 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 
 ## Unreal Engine 5 Support
 
-`lua/plugins/lang-ue.lua` provides the full taku25 UnrealDev.nvim suite with **zero overhead** outside UE projects. All UE plugins use `cond = is_ue_project` which checks for a `.uproject` file at startup via `vim.fs.find`.
+`lua/plugins/lang-ue.lua` provides the taku25 plugin suite with **zero overhead** outside UE projects. All UE specs use `cond = is_ue_project` which checks for a `.uproject` file at startup via `vim.fs.find`.
 
 **How it works:**
 - Open Neovim in a UE project directory (containing `.uproject`) → full UE suite loads
 - Open Neovim anywhere else → zero UE plugins load, zero memory/startup cost
 
-**Prerequisites:** Rust/Cargo, fd, ripgrep (already present)
+**Plugin suite (7 UE plugins + 2 integrations):**
+- UNL (core RPC server), UEP (project explorer), UBT (build tool)
+- UCM (class management), UEA (Blueprint/asset tracking + Code Lens), UDB (debug)
+- blink-cmp-unreal (UE completion source), fzf-lua (picker backend for UEP)
 
-**Per-project setup:** Each UE project root needs a `.clangd` file:
-```yaml
-CompileFlags:
-  Add: [-D__INTELLISENSE__, -Wno-everything]
-  Remove: [/Yu*, /Yc*, /FI*, /Fp*, -include-pch, -include]
-Diagnostics:
-  Suppress: [pp_file_not_found, drv_unknown_argument, unknown_argument]
-  ClangTidy:
-    Remove: ['*']
-InlayHints:
-  Enabled: Yes
-  ParameterNames: Yes
-  DeducedTypes: Yes
-```
+**Key architectural decisions:**
+- Filetype detection (`.uproject`→json, `.ush`/`.usf`→hlsl) is handled inline in `lang-ue.lua` via autocmds
+- UE indentation (tabs, width 4) is set via FileType autocmd for c/cpp — `.editorconfig` overrides if present
+- UEA uses `ft = { 'cpp', 'c' }` trigger (not just `cmd`) so Code Lens registers before C++ buffers open
+- UDB.nvim owns DAP config in UE projects — `lang-cpp.lua` skips codelldb setup when `.uproject` is found
+- `lsp.lua` adjusts clangd flags for UE: `--header-insertion=never`, no `--clang-tidy`, `--pch-storage=disk`
+- blink-cmp-unreal extends blink.cmp via lazy.nvim spec merging (`optional = true` + `opts_extend`)
+- UBT presets are pinned with explicit TargetName values (UBT derives invalid names on Windows by default)
+- UEP/UNL use fzf-lua as picker backend (avoids Telescope picker crash path)
+
+**Prerequisites:** Rust/Cargo, fd, ripgrep
+
+**Per-project setup:** `.clangd` is auto-created in the UE project root on first open (with `-D__INTELLISENSE__`, suppressed diagnostics, disabled clang-tidy).
 
 **First-time UE project workflow:**
-1. Open Neovim in the UE project root
+1. Open Neovim in the UE project root (`.clangd` is auto-created)
 2. `:UBT gen_compile_db` — generates `compile_commands.json` for clangd
-3. `:UEP refresh` — scans project structure
+3. UNL server loads and scans project structure
 4. clangd will begin background indexing (first run: hours, subsequent: fast)
 
 ## Testing Changes

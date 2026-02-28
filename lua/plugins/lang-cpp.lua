@@ -21,45 +21,53 @@ return {
       local dap = require('dap')
       local dapui = require('dapui')
 
-      -- codelldb adapter (Windows-aware)
-      local codelldb_cmd = vim.fn.exepath('codelldb')
-      if codelldb_cmd == '' then
-        local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/'
-        codelldb_cmd = mason_bin .. (vim.fn.has('win32') == 1 and 'codelldb.cmd' or 'codelldb')
+      -- In UE projects, UDB.nvim handles DAP adapter + launch configurations
+      -- with auto-discovered engine binaries. Skip generic setup.
+      local is_ue = #vim.fs.find(function(name)
+        return name:match('%.uproject$') ~= nil
+      end, { upward = true, type = 'file', path = vim.fn.getcwd(), limit = 1 }) > 0
+
+      if not is_ue then
+        -- codelldb adapter (Windows-aware)
+        local codelldb_cmd = vim.fn.exepath('codelldb')
+        if codelldb_cmd == '' then
+          local mason_bin = vim.fn.stdpath('data') .. '/mason/bin/'
+          codelldb_cmd = mason_bin .. (vim.fn.has('win32') == 1 and 'codelldb.cmd' or 'codelldb')
+        end
+
+        dap.adapters.codelldb = {
+          type = 'server',
+          port = '${port}',
+          executable = {
+            command = codelldb_cmd,
+            args = { '--port', '${port}' },
+            detached = vim.fn.has('win32') == 0,
+          },
+        }
+
+        -- Default C/C++ launch configurations
+        dap.configurations.cpp = {
+          {
+            name = 'Launch executable',
+            type = 'codelldb',
+            request = 'launch',
+            program = function()
+              return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/', 'file')
+            end,
+            cwd = '${workspaceFolder}',
+            stopOnEntry = false,
+          },
+          {
+            name = 'Attach to process',
+            type = 'codelldb',
+            request = 'attach',
+            pid = require('dap.utils').pick_process,
+          },
+        }
+        dap.configurations.c = dap.configurations.cpp
       end
 
-      dap.adapters.codelldb = {
-        type = 'server',
-        port = '${port}',
-        executable = {
-          command = codelldb_cmd,
-          args = { '--port', '${port}' },
-          detached = vim.fn.has('win32') == 0,
-        },
-      }
-
-      -- Default C/C++ launch configurations
-      dap.configurations.cpp = {
-        {
-          name = 'Launch executable',
-          type = 'codelldb',
-          request = 'launch',
-          program = function()
-            return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/', 'file')
-          end,
-          cwd = '${workspaceFolder}',
-          stopOnEntry = false,
-        },
-        {
-          name = 'Attach to process',
-          type = 'codelldb',
-          request = 'attach',
-          pid = require('dap.utils').pick_process,
-        },
-      }
-      dap.configurations.c = dap.configurations.cpp
-
-      -- Auto open/close DAP UI on debug sessions
+      -- Auto open/close DAP UI on debug sessions (universal)
       dap.listeners.before.attach.dapui_config = function() dapui.open() end
       dap.listeners.before.launch.dapui_config = function() dapui.open() end
       dap.listeners.before.event_terminated.dapui_config = function() dapui.close() end

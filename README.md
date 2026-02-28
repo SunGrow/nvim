@@ -87,7 +87,7 @@ nvim/
 │   └── plugins/
 │       ├── colorscheme.lua   catppuccin theme
 │       ├── treesitter.lua    Syntax highlighting + folding
-│       ├── ui.lua            lualine + which-key
+│       ├── ui.lua            lualine + fidget + which-key
 │       ├── editor.lua        hardtime (habit training)
 │       ├── telescope.lua     Fuzzy finder
 │       ├── lsp.lua           LSP + mason + lazydev
@@ -117,6 +117,7 @@ nvim/
 | [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) | Status line |
 | [which-key.nvim](https://github.com/folke/which-key.nvim) | Keymap popup |
 | [hardtime.nvim](https://github.com/m4xshen/hardtime.nvim) | Vim motion training |
+| [fidget.nvim](https://github.com/j-hui/fidget.nvim) | LSP progress spinner |
 | [nvim-dap](https://github.com/mfussenegger/nvim-dap) | Debug Adapter Protocol client |
 | [nvim-dap-ui](https://github.com/rcarriga/nvim-dap-ui) | Debug UI (watches, breakpoints, stack) |
 | [mason-nvim-dap](https://github.com/jay-babu/mason-nvim-dap.nvim) | DAP adapter installer |
@@ -126,13 +127,13 @@ nvim/
 | Plugin | Purpose |
 |--------|---------|
 | [UNL.nvim](https://github.com/taku25/UNL.nvim) | Core library (Rust scanner, RPC server) |
-| [UnrealDev.nvim](https://github.com/taku25/UnrealDev.nvim) | Meta-plugin (`:UDEV` unified command) |
-| [UEP.nvim](https://github.com/taku25/UEP.nvim) | Project navigation, inheritance, includes |
+| [UEP.nvim](https://github.com/taku25/UEP.nvim) | Project navigation, symbol browsing |
 | [UBT.nvim](https://github.com/taku25/UBT.nvim) | Build, compile_commands.json, UHT |
 | [UCM.nvim](https://github.com/taku25/UCM.nvim) | Class creation, header/source switching |
 | [UEA.nvim](https://github.com/taku25/UEA.nvim) | Blueprint/asset tracking, Code Lens |
-| [ULG.nvim](https://github.com/taku25/ULG.nvim) | Real-time log viewer |
 | [UDB.nvim](https://github.com/taku25/UDB.nvim) | Debug integration (wraps nvim-dap for UE) |
+| [blink-cmp-unreal](https://github.com/taku25/blink-cmp-unreal) | UE completion source for blink.cmp |
+| [fzf-lua](https://github.com/ibhagwan/fzf-lua) | Picker backend for UEP navigation |
 
 ## Keybindings
 
@@ -259,20 +260,24 @@ These vim-unimpaired-style mappings are built-in defaults.
 | `<Space>Uc` | Browse classes |
 | `<Space>Us` | Browse structs |
 | `<Space>Ue` | Browse enums |
-| `<Space>Ud` | Find derived classes |
-| `<Space>Up` | Find parent classes |
 | `<Space>Ui` | Add #include |
-| `<Space>Um` | Browse modules |
+| `<Space>UG` | Go to definition (UE) |
+| `<Space>UI` | Go to implementation (UE) |
 | `<Space>Ur` | Refresh project cache |
+| `<Space>UR` | Server status |
 | `<Space>Ub` | Build |
 | `<Space>UB` | Build (pick target) |
 | `<Space>Uj` | Generate compile_commands.json |
+| `<Space>UJ` | Generate .sln |
 | `<Space>Uh` | Generate headers (UHT) |
+| `<Space>UE` | Build diagnostics |
+| `<Space>UX` | Run (pick target) |
 | `<Space>Un` | New UE class |
 | `<Space>Uo` | Switch header/source (UE) |
+| `<Space>UO` | Generate .cpp from .h |
+| `<Space>Uk` | Insert UE specifiers |
 | `<Space>Ua` | Blueprint usages |
 | `<Space>UA` | Asset references |
-| `<Space>Ul` | Start log viewer |
 | `<Space>UD` | Debug (default target) |
 | `<Space>US` | Debug (select target) |
 
@@ -330,23 +335,7 @@ The UE5 suite loads automatically when Neovim is opened inside a project contain
 
 1. Install prerequisites: `scoop install fd rustup` then `rustup default stable`
 2. Open Neovim — lazy.nvim will install UE plugins and build the UNL.nvim Rust scanner
-3. Create a `.clangd` file in your UE project root:
-
-```yaml
-CompileFlags:
-  Add: [-D__INTELLISENSE__, -Wno-everything]
-  Remove: [/Yu*, /Yc*, /FI*, /Fp*, -include-pch, -include]
-Diagnostics:
-  Suppress: [pp_file_not_found, drv_unknown_argument, unknown_argument]
-  ClangTidy:
-    Remove: ['*']
-InlayHints:
-  Enabled: Yes
-  ParameterNames: Yes
-  DeducedTypes: Yes
-```
-
-4. Open Neovim in your UE project root
-5. Run `:UBT gen_compile_db` to generate `compile_commands.json` for clangd
-6. Run `:UEP refresh` to scan the project structure
-7. clangd will begin background indexing (first run takes hours; subsequent runs are fast)
+3. Open Neovim in your UE project root — `.clangd` is auto-created with UE-appropriate settings
+4. Run `:UBT gen_compile_db` to generate `compile_commands.json` for clangd
+5. Run `:UNL refresh` to scan the project structure
+6. clangd will begin background indexing (first run takes hours; subsequent runs are fast)

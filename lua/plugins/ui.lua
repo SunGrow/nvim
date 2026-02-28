@@ -1,6 +1,17 @@
 -- Neovim process RAM (MB) — updated every 2s via timer
 local ram_mb = 0
 
+-- UE project name (evaluated once at startup, zero cost outside UE projects)
+local ue_project_name = ''
+do
+  local found = vim.fs.find(function(name)
+    return name:match('%.uproject$') ~= nil
+  end, { upward = true, type = 'file', path = vim.fn.getcwd(), limit = 1 })
+  if #found > 0 then
+    ue_project_name = vim.fn.fnamemodify(found[1], ':t:r')
+  end
+end
+
 return {
   -- Status line
   {
@@ -39,6 +50,12 @@ return {
             end,
             icon = '',
             color = { fg = '#7aa2f7' },
+          },
+          {
+            function() return ue_project_name end,
+            icon = '󰿅',
+            color = { fg = '#9ece6a' },
+            cond = function() return ue_project_name ~= '' end,
           },
           -- NOTE: LSP progress is handled by fidget.nvim (top-right spinner).
           -- fidget consumes the LSP progress ring buffer, so vim.lsp.status()
@@ -80,16 +97,50 @@ return {
   {
     'folke/which-key.nvim',
     event = 'VimEnter',
+    dependencies = { 'nvim-tree/nvim-web-devicons' },
     opts = {
       delay = 0,
+      icons = {
+        breadcrumb = '> ',
+        separator = '->',
+        group = '+',
+        ellipsis = '...',
+        mappings = true,
+        -- Keep icon coloring predictable across themes.
+        colors = false,
+        -- Force readable footer hints for which-key actions (close/back).
+        keys = {
+          Space = 'SPC ',
+          Tab = 'Tab ',
+          CR = 'Enter ',
+          Up = 'Up ',
+          Down = 'Down ',
+          Left = 'Left ',
+          Right = 'Right ',
+          Esc = 'Esc ',
+          BS = 'BS ',
+        },
+        -- Font-safe fallback icon rules so icons still render without Nerd Font glyphs.
+        rules = {
+          { pattern = 'find', icon = '⌕ ' },
+          { pattern = 'grep', icon = '⌕ ' },
+          { pattern = 'build', icon = '⚙ ' },
+          { pattern = 'debug', icon = '🐞 ' },
+          { pattern = 'class', icon = 'C ' },
+          { pattern = 'struct', icon = 'S ' },
+          { pattern = 'enum', icon = 'E ' },
+          { pattern = 'include', icon = 'I ' },
+          { pattern = 'unreal', icon = 'U ' },
+        },
+      },
       spec = {
-        { '<leader>f', group = 'Find' },
-        { '<leader>g', group = 'Git' },
-        { '<leader>l', group = 'LSP' },
-        { '<leader>c', group = 'Code' },
-        { '<leader>u', group = 'UI' },
-        { '<leader>d', group = 'Debug' },
-        { '<leader>U', group = 'Unreal' },
+        { '<leader>f', group = 'Find', icon = '⌕ ' },
+        { '<leader>g', group = 'Git', icon = 'G ' },
+        { '<leader>l', group = 'LSP', icon = 'L ' },
+        { '<leader>c', group = 'Code', icon = 'C ' },
+        { '<leader>u', group = 'UI', icon = 'UI' },
+        { '<leader>d', group = 'Debug', icon = '🐞 ' },
+        { '<leader>U', group = 'Unreal', icon = 'U ' },
       },
     },
   },

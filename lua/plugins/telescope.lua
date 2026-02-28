@@ -26,6 +26,10 @@ return {
     local telescope = require('telescope')
     telescope.setup({
       defaults = {
+        preview = {
+          -- Prevent previewer crashes from invalid third-party Treesitter queries.
+          treesitter = false,
+        },
         mappings = {
           i = {
             ['<C-u>'] = false,
