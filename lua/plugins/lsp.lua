@@ -1,7 +1,5 @@
--- Detect UE project for clangd config adjustments
-local is_ue_project = #vim.fs.find(function(name)
-  return name:match('%.uproject$') ~= nil
-end, { upward = true, type = 'file', path = vim.fn.getcwd(), limit = 1 }) > 0
+-- Use centralized project context detection
+local is_ue_project = require('core.context').is_ue
 
 return {
   'neovim/nvim-lspconfig',
@@ -82,8 +80,7 @@ return {
         map('<leader>ld', vim.diagnostic.open_float, 'Diagnostics float')
         map('<leader>li', '<cmd>LspInfo<CR>', 'LSP info')
 
-        -- clangd-specific: switch between header and source
-        -- (manual implementation — ClangdSwitchSourceHeader only exists via nvim-lspconfig)
+        -- clangd-specific: register ClangdSwitchSourceHeader command (used by <M-o>)
         local clangd = vim.lsp.get_clients({ bufnr = event.buf, name = 'clangd' })[1]
         if clangd then
           vim.api.nvim_buf_create_user_command(event.buf, 'ClangdSwitchSourceHeader', function()
@@ -93,7 +90,6 @@ return {
               vim.cmd.edit(vim.uri_to_fname(result))
             end, event.buf)
           end, { desc = 'Switch between source/header (clangd)' })
-          map('<leader>lh', '<cmd>ClangdSwitchSourceHeader<CR>', 'Switch header/source')
         end
 
         -- Built-in 0.11 defaults (NOT overridden):

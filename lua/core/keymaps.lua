@@ -39,6 +39,31 @@ map('n', '<C-u>', '<C-u>zz', { desc = 'Scroll up (centered)' })
 map('n', 'n', 'nzzzv', { desc = 'Next search (centered)' })
 map('n', 'N', 'Nzzzv', { desc = 'Prev search (centered)' })
 
+-- =============================================================================
+-- Context-aware keymaps (dispatch based on project type + LSP state)
+-- =============================================================================
+local ctx = require('core.context')
+
+-- Alt+O — switch header/source (universal IDE convention)
+-- UE: UCM switch (module-aware), clangd: textDocument/switchSourceHeader
+map('n', '<M-o>', function()
+  if ctx.is_ue then
+    vim.cmd('UCM switch')
+  elseif ctx.has_clangd() then
+    vim.cmd('ClangdSwitchSourceHeader')
+  end
+end, { desc = 'Switch header/source' })
+
+-- Alt+] — references
+-- LSP: vim.lsp.buf.references(), fallback: Telescope grep word
+map('n', '<M-]>', function()
+  if ctx.has_lsp() then
+    vim.lsp.buf.references()
+  else
+    require('telescope.builtin').grep_string()
+  end
+end, { desc = 'References' })
+
 -- Built-in keymaps NOT overridden (Neovim 0.11 defaults):
 --
 -- LSP (global):

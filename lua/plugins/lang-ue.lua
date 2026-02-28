@@ -1,18 +1,10 @@
 -- Unreal Engine 5 development support (taku25 suite)
 -- Zero overhead outside UE projects: all specs use cond = is_ue_project
 
--- Detect UE project by searching upward for any .uproject file
--- Evaluated once at startup (lazy.nvim cond is session-level)
-local uproject_files = vim.fs.find(function(name)
-  return name:match('%.uproject$') ~= nil
-end, {
-  upward = true,
-  type = 'file',
-  path = vim.fn.getcwd(),
-  limit = 1,
-})
-local is_ue_project = #uproject_files > 0
-local project_name = nil
+-- Use centralized project context detection
+local ctx = require('core.context')
+local is_ue_project = ctx.is_ue
+local project_name = ctx.ue_project_name
 
 -- Compatibility shim for plugins that call string:starts_with(...)
 if string.starts_with == nil then
@@ -174,8 +166,7 @@ end
 
 -- Auto-create .clangd + set UE indentation when in a UE project
 if is_ue_project then
-  local project_root = vim.fn.fnamemodify(uproject_files[1], ':h')
-  project_name = vim.fn.fnamemodify(uproject_files[1], ':t:r')
+  local project_root = ctx.ue_project_root
   local clangd_path = project_root .. '/.clangd'
   local clangd_config = table.concat({
     'CompileFlags:',
@@ -297,14 +288,12 @@ return {
     },
     -- stylua: ignore
     keys = {
-      { '<leader>Uf', '<cmd>UEP files<CR>', desc = 'Unreal: Find files' },
-      { '<leader>Ug', '<cmd>UEP grep<CR>', desc = 'Unreal: Grep project' },
       { '<leader>Uc', '<cmd>UEP classes<CR>', desc = 'Unreal: Browse classes' },
       { '<leader>Us', '<cmd>UEP structs<CR>', desc = 'Unreal: Browse structs' },
       { '<leader>Ue', '<cmd>UEP enums<CR>', desc = 'Unreal: Browse enums' },
-      { '<leader>Ui', '<cmd>UEP add_include<CR>', desc = 'Unreal: Add #include' },
       { '<leader>UG', '<cmd>UEP goto_definition<CR>', desc = 'Unreal: Go to definition' },
       { '<leader>UI', '<cmd>UEP goto_impl<CR>', desc = 'Unreal: Go to implementation' },
+      { '<leader>ci', '<cmd>UEP add_include<CR>', desc = 'Add #include' },
     },
   },
 
@@ -321,13 +310,13 @@ return {
     },
     -- stylua: ignore
     keys = {
-      { '<leader>Ub', '<cmd>UBT build<CR>', desc = 'Unreal: Build' },
-      { '<leader>UB', '<cmd>UBT build!<CR>', desc = 'Unreal: Build (pick target)' },
-      { '<leader>Uj', '<cmd>UBT gen_compile_db<CR>', desc = 'Unreal: Generate compile_commands.json' },
+      { '<leader>bb', '<cmd>UBT build<CR>', desc = 'Build' },
+      { '<leader>bB', '<cmd>UBT build!<CR>', desc = 'Build (pick target)' },
+      { '<leader>bj', '<cmd>UBT gen_compile_db<CR>', desc = 'Generate compile_commands.json' },
+      { '<leader>bJ', '<cmd>UBT gen_project<CR>', desc = 'Generate .sln' },
+      { '<leader>be', '<cmd>UBT diagnostics<CR>', desc = 'Build diagnostics' },
+      { '<leader>bx', '<cmd>UBT run!<CR>', desc = 'Run (pick target)' },
       { '<leader>Uh', '<cmd>UBT gen_header<CR>', desc = 'Unreal: Generate headers (UHT)' },
-      { '<leader>UJ', '<cmd>UBT gen_project<CR>', desc = 'Unreal: Generate .sln' },
-      { '<leader>UE', '<cmd>UBT diagnostics<CR>', desc = 'Unreal: Build diagnostics' },
-      { '<leader>UX', '<cmd>UBT run!<CR>', desc = 'Unreal: Run (pick target)' },
     },
   },
 
@@ -341,9 +330,8 @@ return {
     -- stylua: ignore
     keys = {
       { '<leader>Un', '<cmd>UCM new<CR>', desc = 'Unreal: New class' },
-      { '<leader>Uo', '<cmd>UCM switch<CR>', desc = 'Unreal: Switch header/source' },
       { '<leader>Uk', '<cmd>UCM specifiers<CR>', desc = 'Unreal: Insert specifiers' },
-      { '<leader>UO', '<cmd>UCM create_impl<CR>', desc = 'Unreal: Generate .cpp from .h' },
+      { '<leader>cI', '<cmd>UCM create_impl<CR>', desc = 'Generate .cpp from .h' },
     },
   },
 
@@ -377,8 +365,8 @@ return {
     opts = {},
     -- stylua: ignore
     keys = {
-      { '<leader>UD', '<cmd>UDB run_debug<CR>', desc = 'Unreal: Debug (default target)' },
-      { '<leader>US', '<cmd>UDB run_debug!<CR>', desc = 'Unreal: Debug (select target)' },
+      { '<leader>bD', '<cmd>UDB run_debug<CR>', desc = 'Debug (default target)' },
+      { '<leader>bS', '<cmd>UDB run_debug!<CR>', desc = 'Debug (select target)' },
     },
   },
 

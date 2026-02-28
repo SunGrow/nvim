@@ -13,8 +13,20 @@ return {
     },
   },
   keys = {
-    { '<leader>ff', function() require('telescope.builtin').find_files() end, desc = 'Find files' },
-    { '<leader>fg', function() require('telescope.builtin').live_grep() end, desc = 'Live grep' },
+    { '<leader>ff', function()
+        if require('core.context').is_ue then
+          vim.cmd('UEP files')
+        else
+          require('telescope.builtin').find_files()
+        end
+      end, desc = 'Find files' },
+    { '<leader>fg', function()
+        if require('core.context').is_ue then
+          vim.cmd('UEP grep')
+        else
+          require('telescope.builtin').live_grep()
+        end
+      end, desc = 'Live grep' },
     { '<leader>fb', function() require('telescope.builtin').buffers() end, desc = 'Buffers' },
     { '<leader>fh', function() require('telescope.builtin').help_tags() end, desc = 'Help tags' },
     { '<leader>fd', function() require('telescope.builtin').diagnostics() end, desc = 'Diagnostics' },

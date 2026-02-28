@@ -23,9 +23,7 @@ return {
 
       -- In UE projects, UDB.nvim handles DAP adapter + launch configurations
       -- with auto-discovered engine binaries. Skip generic setup.
-      local is_ue = #vim.fs.find(function(name)
-        return name:match('%.uproject$') ~= nil
-      end, { upward = true, type = 'file', path = vim.fn.getcwd(), limit = 1 }) > 0
+      local is_ue = require('core.context').is_ue
 
       if not is_ue then
         -- codelldb adapter (Windows-aware)

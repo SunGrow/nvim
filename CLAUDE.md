@@ -10,20 +10,23 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
 
 **Load order** (`init.lua`): `core.keymaps` → `core.options` → `core.autocmds` → `core.lazy`
 
-- `lua/core/` — editor fundamentals (leader key MUST be set before lazy.nvim loads)
+- `lua/core/` — editor fundamentals (leader key MUST be set before lazy.nvim loads); `context.lua` provides project-type detection
 - `lua/plugins/` — one file per plugin concern; lazy.nvim auto-discovers all `*.lua` files in this directory via `require('lazy').setup('plugins')`
 - All plugins default to `lazy = true` in `lua/core/lazy.lua`
 
 **Key design patterns:**
+- `lua/core/context.lua` detects project type once at startup (`.uproject` → UE) and caches the result — all files use `require('core.context')` instead of inline `vim.fs.find`
+- Context-aware keybindings (`<leader>ff`, `<leader>fg`, `<M-o>`) dispatch to UE-specific or generic backends based on `core.context.is_ue` — same muscle memory everywhere
+- `<leader>b` (Build) and `<leader>c` (Code) groups hold generic actions; UE-specific actions (`<leader>U`) are reserved for things only UNL/UEP/UBT can do
 - LSP uses Neovim 0.11 native `vim.lsp.config()` + mason-lspconfig v2 `automatic_enable` — NOT the old `lspconfig.X.setup()` pattern
 - Completion is blink.cmp (NOT nvim-cmp) with `fuzzy.implementation = "lua"` to avoid Rust dependencies on Windows
 - LSP capabilities come from `require('blink.cmp').get_lsp_capabilities()` and must be passed to `vim.lsp.config()`
-- Neovim 0.11 built-in keymaps (grn, gra, grr, gri, grt, gO, K, `<C-s>`, [d, ]d, gcc, gc) are intentionally NOT overridden — the config only adds `gd`, `gD`, `<leader>ld`, `<leader>li`, `<leader>lh`
+- Neovim 0.11 built-in keymaps (grn, gra, grr, gri, grt, gO, K, `<C-s>`, [d, ]d, gcc, gc) are intentionally NOT overridden — the config only adds `gd`, `gD`, `<leader>ld`, `<leader>li`, `<M-o>` (switch header/source), `<M-]>` (references)
 - LSP progress uses fidget.nvim (top-right spinner), NOT lualine — fidget consumes the progress ring buffer so `vim.lsp.status()` returns empty when active
 
 ## Conventions
 
-- Leader key is `<Space>`, with mnemonic groups: `f`=Find, `g`=Git, `l`=LSP, `c`=Code, `d`=Debug, `U`=Unreal
+- Leader key is `<Space>`, with mnemonic groups: `f`=Find, `g`=Git, `l`=LSP, `c`=Code, `b`=Build, `d`=Debug, `U`=Unreal
 - Every keymap must have a `desc` parameter for which-key discoverability
 - Plugin files return a table (single spec) or list of tables (multiple specs)
 - Language-specific bundles live in `lua/plugins/lang-*.lua` modules (e.g., `lang-cpp.lua`, `lang-ue.lua`)

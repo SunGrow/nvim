@@ -1,16 +1,8 @@
 -- Neovim process RAM (MB) — updated every 2s via timer
 local ram_mb = 0
 
--- UE project name (evaluated once at startup, zero cost outside UE projects)
-local ue_project_name = ''
-do
-  local found = vim.fs.find(function(name)
-    return name:match('%.uproject$') ~= nil
-  end, { upward = true, type = 'file', path = vim.fn.getcwd(), limit = 1 })
-  if #found > 0 then
-    ue_project_name = vim.fn.fnamemodify(found[1], ':t:r')
-  end
-end
+-- UE project name (evaluated once at startup via core.context, zero cost outside UE projects)
+local ue_project_name = require('core.context').ue_project_name or ''
 
 return {
   -- Status line
@@ -138,6 +130,7 @@ return {
         { '<leader>g', group = 'Git', icon = 'G ' },
         { '<leader>l', group = 'LSP', icon = 'L ' },
         { '<leader>c', group = 'Code', icon = 'C ' },
+        { '<leader>b', group = 'Build', icon = 'B ' },
         { '<leader>u', group = 'UI', icon = 'UI' },
         { '<leader>d', group = 'Debug', icon = '🐞 ' },
         { '<leader>U', group = 'Unreal', icon = 'U ' },

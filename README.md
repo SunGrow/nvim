@@ -81,7 +81,8 @@ nvim/
 ├── lua/
 │   ├── core/
 │   │   ├── options.lua       Editor settings (vim.opt)
-│   │   ├── keymaps.lua       Leader key + general keymaps
+│   │   ├── keymaps.lua       Leader key + general + context-aware keymaps
+│   │   ├── context.lua       Project type detection (UE/.uproject, cached)
 │   │   ├── autocmds.lua      Autocommands
 │   │   └── lazy.lua          Plugin manager bootstrap
 │   └── plugins/
@@ -192,7 +193,15 @@ Custom LSP keymaps (added by this config):
 | `gD` | Go to declaration |
 | `<Space>ld` | Show diagnostic float |
 | `<Space>li` | LSP info |
-| `<Space>lh` | Switch header/source (C/C++ only, via clangd) |
+
+### Context-Aware — dispatch based on project type
+
+| Key | Mode | In UE Project | Outside UE | Fallback |
+|-----|------|---------------|------------|----------|
+| `<Space>ff` | n | UEP files | Telescope find_files | — |
+| `<Space>fg` | n | UEP grep | Telescope live_grep | — |
+| `Alt+O` | n | UCM switch (module-aware) | ClangdSwitchSourceHeader | — |
+| `Alt+]` | n | LSP references | LSP references | Telescope grep_string |
 
 ### Diagnostics — Built-in Neovim 0.11
 
@@ -229,8 +238,25 @@ These vim-unimpaired-style mappings are built-in defaults.
 | Key | Mode | Action |
 |-----|------|--------|
 | `<Space>cf` | n | Format buffer |
+| `<Space>ci` | n | Add #include (UE projects only) |
+| `<Space>cI` | n | Generate .cpp from .h (UE projects only) |
 | `gcc` | n | Toggle comment (line) — built-in |
 | `gc` | v | Toggle comment (selection) — built-in |
+
+### Build — `<Space>b`
+
+> These keymaps only exist when Neovim is opened inside a UE project. Future CMake/Make support will use the same prefix.
+
+| Key | Action |
+|-----|--------|
+| `<Space>bb` | Build |
+| `<Space>bB` | Build (pick target) |
+| `<Space>bj` | Generate compile_commands.json |
+| `<Space>bJ` | Generate .sln |
+| `<Space>be` | Build diagnostics |
+| `<Space>bx` | Run (pick target) |
+| `<Space>bD` | Debug (default target) |
+| `<Space>bS` | Debug (select target) |
 
 ### Debug — `<Space>d`
 
@@ -251,35 +277,22 @@ These vim-unimpaired-style mappings are built-in defaults.
 
 ### Unreal Engine — `<Space>U`
 
-> These keymaps only exist when Neovim is opened inside a directory containing a `.uproject` file.
+> These keymaps only exist when Neovim is opened inside a directory containing a `.uproject` file. Generic actions (find files, grep, build, header/source switch) have moved to context-aware bindings above.
 
-| Key | Action |
-|-----|--------|
-| `<Space>Uf` | Find project files |
-| `<Space>Ug` | Grep project |
-| `<Space>Uc` | Browse classes |
-| `<Space>Us` | Browse structs |
-| `<Space>Ue` | Browse enums |
-| `<Space>Ui` | Add #include |
-| `<Space>UG` | Go to definition (UE) |
-| `<Space>UI` | Go to implementation (UE) |
-| `<Space>Ur` | Refresh project cache |
-| `<Space>UR` | Server status |
-| `<Space>Ub` | Build |
-| `<Space>UB` | Build (pick target) |
-| `<Space>Uj` | Generate compile_commands.json |
-| `<Space>UJ` | Generate .sln |
-| `<Space>Uh` | Generate headers (UHT) |
-| `<Space>UE` | Build diagnostics |
-| `<Space>UX` | Run (pick target) |
-| `<Space>Un` | New UE class |
-| `<Space>Uo` | Switch header/source (UE) |
-| `<Space>UO` | Generate .cpp from .h |
-| `<Space>Uk` | Insert UE specifiers |
-| `<Space>Ua` | Blueprint usages |
-| `<Space>UA` | Asset references |
-| `<Space>UD` | Debug (default target) |
-| `<Space>US` | Debug (select target) |
+| Key | Action | Why UE-specific |
+|-----|--------|-----------------|
+| `<Space>Uc` | Browse classes | UCLASS registry |
+| `<Space>Us` | Browse structs | USTRUCT registry |
+| `<Space>Ue` | Browse enums | UENUM registry |
+| `<Space>UG` | Go to definition (UE) | UNL reflection index |
+| `<Space>UI` | Go to implementation (UE) | UNL reflection index |
+| `<Space>Uh` | Generate headers (UHT) | Unreal Header Tool |
+| `<Space>Un` | New UE class | UCLASS scaffold |
+| `<Space>Uk` | Insert UE specifiers | UPROPERTY/UFUNCTION |
+| `<Space>Ua` | Blueprint usages | Cross-language BP/C++ |
+| `<Space>UA` | Asset references | UE asset registry |
+| `<Space>Ur` | Refresh project cache | UNL server |
+| `<Space>UR` | Server status | UNL server |
 
 ### Completion (blink.cmp)
 
