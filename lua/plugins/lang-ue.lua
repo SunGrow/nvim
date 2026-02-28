@@ -327,6 +327,19 @@ return {
     cmd = { 'UCM' },
     dependencies = { 'taku25/UNL.nvim' },
     opts = {},
+    config = function(_, opts)
+      require('UCM').setup(opts)
+      -- Patch UCM logger: cmd/new.lua calls log.warn() on the module table,
+      -- but the module only exposes .get() — proxy log level methods through.
+      local ucm_logger = require('UCM.logger')
+      for _, level in ipairs({ 'warn', 'info', 'error', 'debug', 'trace' }) do
+        if not ucm_logger[level] then
+          ucm_logger[level] = function(...)
+            return ucm_logger.get()[level](...)
+          end
+        end
+      end
+    end,
     -- stylua: ignore
     keys = {
       { '<leader>Un', '<cmd>UCM new<CR>', desc = 'Unreal: New class' },
