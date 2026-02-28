@@ -133,7 +133,6 @@ nvim/
 | [UEA.nvim](https://github.com/taku25/UEA.nvim) | Blueprint/asset tracking, Code Lens |
 | [UDB.nvim](https://github.com/taku25/UDB.nvim) | Debug integration (wraps nvim-dap for UE) |
 | [blink-cmp-unreal](https://github.com/taku25/blink-cmp-unreal) | UE completion source for blink.cmp |
-| [fzf-lua](https://github.com/ibhagwan/fzf-lua) | Picker backend for UEP navigation |
 
 ## Keybindings
 
@@ -147,6 +146,7 @@ Leader key: `Space`
 | `<Space>w` | n | Window mode (followed by split commands) |
 | `<Space>e` | n | File explorer (netrw) |
 | `<Space>s` | n | Save file |
+| `<Space>ut` | n | Toggle light/dark theme |
 | `Shift+H` | n | Previous buffer |
 | `Shift+L` | n | Next buffer |
 | `Ctrl+D` | n | Scroll down (centered) |

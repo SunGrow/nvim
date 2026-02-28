@@ -46,10 +46,10 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 - Open Neovim in a UE project directory (containing `.uproject`) → full UE suite loads
 - Open Neovim anywhere else → zero UE plugins load, zero memory/startup cost
 
-**Plugin suite (7 UE plugins + 2 integrations):**
+**Plugin suite (6 UE plugins + 1 integration):**
 - UNL (core RPC server), UEP (project explorer), UBT (build tool)
 - UCM (class management), UEA (Blueprint/asset tracking + Code Lens), UDB (debug)
-- blink-cmp-unreal (UE completion source), fzf-lua (picker backend for UEP)
+- blink-cmp-unreal (UE completion source for blink.cmp)
 
 **Key architectural decisions:**
 - Filetype detection (`.uproject`→json, `.ush`/`.usf`→hlsl) is handled inline in `lang-ue.lua` via autocmds
@@ -59,7 +59,7 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 - `lsp.lua` adjusts clangd flags for UE: `--header-insertion=never`, no `--clang-tidy`, `--pch-storage=disk`
 - blink-cmp-unreal extends blink.cmp via lazy.nvim spec merging (`optional = true` + `opts_extend`)
 - UBT presets are pinned with explicit TargetName values (UBT derives invalid names on Windows by default)
-- UEP/UNL use fzf-lua as picker backend (avoids Telescope picker crash path)
+- UNL Telescope callback picker is monkey-patched in `lang-ue.lua` to fix prompt buffer crashes on dynamic selection
 
 **Prerequisites:** Rust/Cargo, fd, ripgrep
 
