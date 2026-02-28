@@ -344,11 +344,145 @@ return {
     keys = {
       { '<leader>Un', function()
           -- Wrapper: bypass broken cmd/new.lua (double-prompt + value unwrap bug).
-          -- Flow: resolve module → class/struct → pick directory → UCM name prompt → parent picker.
+          -- Pre-fetches parent classes/structs immediately so the parent picker is instant.
+          -- Flow: resolve module → class/struct → pick directory → name → parent picker → UCM direct.
           local project_root = ctx.ue_project_root
           local find_module_root = require('UNL.finder').module.find_module_root
+          local unl_db = require('UNL.db')
 
-          -- Step 3: scan subdirs within module via fd, let user pick, then dispatch
+          -- Pre-fetch classes AND structs immediately (async, runs in background).
+          -- By the time the user picks module → kind → directory → name, data is ready.
+          local prefetch = { classes = nil, structs = nil }
+          local class_data_map = {}
+          local struct_data_map = {}
+
+          unl_db.get_classes(
+            { extra_where = "AND (c.symbol_type = 'class' OR c.symbol_type = 'UCLASS')" },
+            function(result)
+              prefetch.classes = {}
+              if result then
+                for _, info in ipairs(result) do
+                  local name = info.name
+                  if name and name:match('^[a-zA-Z_][a-zA-Z0-9_]*$') then
+                    table.insert(prefetch.classes, {
+                      value = name,
+                      display = string.format('%s  (%s)', name, vim.fn.fnamemodify(info.path or '', ':t')),
+                      filename = info.path,
+                    })
+                    class_data_map[name] = { header_file = info.path, base_class = info.base_class }
+                  end
+                end
+              end
+            end
+          )
+
+          unl_db.get_classes(
+            { extra_where = "AND (c.symbol_type = 'struct' OR c.symbol_type = 'USTRUCT')" },
+            function(result)
+              prefetch.structs = {}
+              if result then
+                for _, info in ipairs(result) do
+                  local name = info.name
+                  if name and name:match('^[a-zA-Z_][a-zA-Z0-9_]*$') then
+                    table.insert(prefetch.structs, {
+                      value = name,
+                      display = string.format('%s  (%s)', name, vim.fn.fnamemodify(info.path or '', ':t')),
+                      filename = info.path,
+                    })
+                    struct_data_map[name] = { header_file = info.path, base_struct = info.base_class }
+                  end
+                end
+              end
+            end
+          )
+
+          -- Step 5: show parent picker from pre-fetched data, then call UCM direct mode
+          local function show_parent_picker(kind, cls_name, target_dir)
+            local choices = kind == 'Class' and prefetch.classes or prefetch.structs
+
+            -- If still loading, poll briefly (data should arrive any moment)
+            if not choices then
+              local attempts = 0
+              local function poll()
+                attempts = attempts + 1
+                choices = kind == 'Class' and prefetch.classes or prefetch.structs
+                if choices then
+                  show_parent_picker(kind, cls_name, target_dir)
+                elseif attempts < 20 then
+                  vim.defer_fn(poll, 300)
+                else
+                  vim.notify('[UCM] Timed out loading parent data', vim.log.levels.ERROR)
+                end
+              end
+              vim.notify('[UCM] Loading parent classes...', vim.log.levels.INFO)
+              vim.defer_fn(poll, 300)
+              return
+            end
+
+            if #choices == 0 then
+              vim.notify('[UCM] No parent classes/structs found', vim.log.levels.WARN)
+              return
+            end
+
+            local pickers = require('telescope.pickers')
+            local finders = require('telescope.finders')
+            local conf = require('telescope.config').values
+            local actions = require('telescope.actions')
+            local action_state = require('telescope.actions.state')
+
+            pickers.new({}, {
+              prompt_title = 'Select parent ' .. kind:lower(),
+              finder = finders.new_table({
+                results = choices,
+                entry_maker = function(item)
+                  return {
+                    value = item.value,
+                    display = item.display,
+                    ordinal = item.value,
+                    filename = item.filename,
+                  }
+                end,
+              }),
+              sorter = conf.generic_sorter({}),
+              previewer = conf.file_previewer({}),
+              attach_mappings = function(bufnr)
+                actions.select_default:replace(function()
+                  local entry = action_state.get_selected_entry()
+                  actions.close(bufnr)
+                  if not entry then return end
+                  local parent = entry.value
+                  if kind == 'Class' then
+                    local header = class_data_map[parent] and class_data_map[parent].header_file
+                    require('UCM.api').new_class({
+                      class_name = cls_name,
+                      parent_class = parent,
+                      target_dir = target_dir,
+                      parent_class_header = header,
+                      skip_confirmation = true,
+                    })
+                  else
+                    require('UCM.api').new_struct({
+                      struct_name = cls_name,
+                      parent_struct = parent,
+                      target_dir = target_dir,
+                      skip_confirmation = true,
+                    })
+                  end
+                end)
+                return true
+              end,
+            }):find()
+          end
+
+          -- Step 4: ask for name, then show parent picker
+          local function ask_name_and_dispatch(kind, target_dir)
+            vim.ui.input({ prompt = 'New ' .. kind:lower() .. ' name: ' }, function(cls_name)
+              if not cls_name or cls_name == '' then return end
+              show_parent_picker(kind, cls_name, target_dir)
+            end)
+          end
+
+          -- Step 3: scan subdirs within module via fd, let user pick
           local function pick_dir_and_dispatch(module_root, kind)
             local fd_cmd = {
               'fd', '.', module_root,
@@ -360,12 +494,11 @@ return {
             }
             vim.system(fd_cmd, { text = true }, vim.schedule_wrap(function(result)
               local dirs = {}
-              -- Module root itself as first option (e.g., "Public/" or "Private/" directly)
               local root_display = vim.fn.fnamemodify(module_root, ':t')
               table.insert(dirs, { display = root_display .. '/ (module root)', path = module_root })
               if result.code == 0 and result.stdout ~= '' then
                 for line in result.stdout:gmatch('[^\r\n]+') do
-                  local rel = line:sub(#module_root + 2) -- strip module_root prefix + slash
+                  local rel = line:sub(#module_root + 2)
                   if rel ~= '' then
                     table.insert(dirs, { display = rel, path = line })
                   end
@@ -373,16 +506,10 @@ return {
               end
 
               if #dirs == 1 then
-                -- Only module root — use it directly
-                if kind == 'Class' then
-                  require('UCM.api').new_class({ target_dir = module_root })
-                else
-                  require('UCM.api').new_struct({ target_dir = module_root })
-                end
+                ask_name_and_dispatch(kind, module_root)
                 return
               end
 
-              -- Use Telescope for the directory picker (handles large lists well)
               local pickers = require('telescope.pickers')
               local finders = require('telescope.finders')
               local conf = require('telescope.config').values
@@ -403,11 +530,7 @@ return {
                     local entry = action_state.get_selected_entry()
                     actions.close(bufnr)
                     if not entry then return end
-                    if kind == 'Class' then
-                      require('UCM.api').new_class({ target_dir = entry.value })
-                    else
-                      require('UCM.api').new_struct({ target_dir = entry.value })
-                    end
+                    ask_name_and_dispatch(kind, entry.value)
                   end)
                   return true
                 end,
