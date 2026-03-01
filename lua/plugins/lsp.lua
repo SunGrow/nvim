@@ -26,7 +26,8 @@ return {
   },
   config = function()
     -- Pass blink.cmp capabilities to all LSP servers
-    local capabilities = require('blink.cmp').get_lsp_capabilities()
+    local ok, blink = pcall(require, 'blink.cmp')
+    local capabilities = ok and blink.get_lsp_capabilities() or {}
 
     -- Configure lua_ls via Neovim 0.11 native API
     vim.lsp.config('lua_ls', {
