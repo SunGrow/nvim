@@ -275,6 +275,37 @@ if project_name ~= nil then
   }
 end
 
+-- UNL startup race: unl-server registers the project a few hundred ms after it starts, but UEA's code lens
+-- queries the first buffer before that. The query fails with "Project not found" (or ECONNREFUSED while
+-- the server is still starting), UEA reports it as an error (an ENTER prompt at startup) and the first
+-- file never gets its lenses. Retry those transient errors for up to 10 s.
+local function patch_unl_startup_retry()
+  local ok, db = pcall(require, 'UNL.db')
+  if not ok or type(db) ~= 'table' or db._lazyf_retry_applied or type(db.get_file_symbols) ~= 'function' then
+    return
+  end
+
+  db._lazyf_retry_applied = true
+  local get_file_symbols = db.get_file_symbols
+
+  db.get_file_symbols = function(file_path, callback)
+    local tries = 0
+    local function attempt()
+      get_file_symbols(file_path, function(result, err)
+        local msg = err and tostring(err) or ''
+        local transient = msg:find('Project not found', 1, true) or msg:find('ECONNREFUSED', 1, true)
+        if transient and callback and tries < 20 then
+          tries = tries + 1
+          vim.defer_fn(attempt, 500)
+        elseif callback then
+          callback(result, err)
+        end
+      end)
+    end
+    attempt()
+  end
+end
+
 return {
   -- Core UE runtime/index layer.
   {
@@ -296,6 +327,7 @@ return {
     config = function(_, opts)
       require('UNL').setup(opts)
       patch_unl_telescope_provider()
+      patch_unl_startup_retry()
     end,
     keys = {
       { '<leader>Ur', '<cmd>UNL refresh<CR>', desc = 'Unreal: Refresh project cache' },
