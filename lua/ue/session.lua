@@ -34,10 +34,14 @@ function M.setup()
   vim.api.nvim_create_autocmd('VimEnter', {
     group = group,
     once = true,
-    nested = true, -- let BufRead/FileType/LSP autocmds run for the restored buffers
     callback = function()
       if not has_ui() or vim.fn.argc() > 0 or not vim.uv.fs_stat(session_file()) then return end
-      pcall(vim.cmd, 'silent! source ' .. vim.fn.fnameescape(session_file()))
+      -- After every VimEnter handler: the session wipes the empty start buffer, and UNL's own
+      -- VimEnter handler (plugin/UNL.lua) still indexes it ("Invalid buffer id: 1" + ENTER prompt).
+      -- Outside the autocmd, BufRead/FileType/LSP autocmds run normally for the restored buffers.
+      vim.schedule(function()
+        pcall(vim.cmd, 'silent! source ' .. vim.fn.fnameescape(session_file()))
+      end)
     end,
   })
   vim.api.nvim_create_autocmd('VimLeavePre', {
