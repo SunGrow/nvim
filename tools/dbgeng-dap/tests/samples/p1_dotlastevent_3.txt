@@ -1,0 +1,2 @@
+Last event: fcc0.10898: Break instruction exception - code 80000003 (first chance)
+  debugger time: Tue Oct 20 11:09:41.997 2026 (UTC + 7:00)

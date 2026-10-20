@@ -1,0 +1,6 @@
+this->MatchConfigMap [Type: TMap<int,TObjectPtr<UMatchDataAsset>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<int,TObjectPtr<UMatchDataAsset>,0> >]
+    [+0x000] TMapBase<int,TObjectPtr<UMatchDataAsset>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<int,TObjectPtr<UMatchDataAsset>,0> > : Empty [Type: TMapBase<int,TObjectPtr<UMatchDataAsset>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<int,TObjectPtr<UMatchDataAsset>,0> >]
+        [<Raw View>]     [Type: TMapBase<int,TObjectPtr<UMatchDataAsset>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<int,TObjectPtr<UMatchDataAsset>,0> >]
+        [Pairs]          [Type: TSet<TTuple<int,TObjectPtr<UMatchDataAsset> >,TDefaultMapHashableKeyFuncs<int,TObjectPtr<UMatchDataAsset>,0>,FDefaultSetAllocator>]
+    bHasIntrusiveUnsetOptionalState : true [Type: bool]
+    bHasIntrusiveUnsetOptionalState : true [Type: bool]

@@ -1,0 +1,5 @@
+LoadedConfigs    : Num=3, Max=4 [Type: TArray<UMatchDataAsset *,TSizedDefaultAllocator<32> >]
+    [<Raw View>]     [Type: TArray<UMatchDataAsset *,TSizedDefaultAllocator<32> >]
+    [0x0]            : 0x1fdfeffce40 [Type: ElementType]
+    [0x1]            : 0x1fdfeffb700 [Type: ElementType]
+    [0x2]            : 0x1fdfeffa740 [Type: ElementType]

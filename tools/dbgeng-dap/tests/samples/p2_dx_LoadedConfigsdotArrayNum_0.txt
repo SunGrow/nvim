@@ -1,0 +1,1 @@
+LoadedConfigs.ArrayNum > 0 : true

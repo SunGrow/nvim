@@ -1,0 +1,7 @@
+*** WARNING: Unable to verify timestamp for UnrealEditor.exe
+@$curframe.LocalVariables
+    <begin>$L0       : Value unavailable error for <begin>$L0
+    Config           : Value unavailable error for Config
+    LoadedConfigs    : Num=3, Max=4 [Type: TArray<UMatchDataAsset *,TSizedDefaultAllocator<32> >]
+    MatchId     : Value unavailable error for MatchId
+    this             : 0x1e14fdb7260 [Type: UMatchSubsystem *]

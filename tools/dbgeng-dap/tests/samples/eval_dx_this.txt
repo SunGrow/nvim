@@ -1,0 +1,8 @@
+this             : 0x1fdf27117c0 [Type: UMatchSubsystem *]
+    [+0x000] UObject          : {...} [Type: UObject]
+    StaticClassFlags : 268435457 [Type: EClassFlags]
+    [+0x030] InternalOwningSubsystem : 0x1fdfded4748 [Type: FSubsystemCollectionBase *]
+    StaticClassFlags : 268435457 [Type: EClassFlags]
+    [=0x7ffc19342448] StaticClassFlags : CLASS_Intrinsic (268435456) [Type: EClassFlags]
+    [+0x038] MatchConfigMap [Type: TMap<int,TObjectPtr<UMatchDataAsset>,FDefaultSetAllocator,TDefaultMapHashableKeyFuncs<int,TObjectPtr<UMatchDataAsset>,0> >]
+    [+0x088] CurrentMatch : nullptr [Type: TObjectPtr<UMatchDataAsset>]

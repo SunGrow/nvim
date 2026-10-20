@@ -1,0 +1,2 @@
+Last event: fbc8.f834: Hit breakpoint 1
+  debugger time: Tue Oct 20 11:12:15.096 2026 (UTC + 7:00)

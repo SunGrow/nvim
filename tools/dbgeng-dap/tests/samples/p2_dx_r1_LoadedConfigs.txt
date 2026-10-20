@@ -1,0 +1,5 @@
+LoadedConfigs,!  : Num=3, Max=4 [Type: TArray<UMatchDataAsset *,TSizedDefaultAllocator<32> >]
+    bHasIntrusiveUnsetOptionalState : true [Type: bool]
+    [+0x000] AllocatorInstance [Type: TSizedHeapAllocator<32,FMemory>::ForAnyElementType]
+    [+0x008] ArrayNum         : 3 [Type: int]
+    [+0x00c] ArrayMax         : 4 [Type: int]

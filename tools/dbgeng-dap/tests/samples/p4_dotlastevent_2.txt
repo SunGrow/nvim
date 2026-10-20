@@ -1,0 +1,2 @@
+Last event: 10c48.e0b8: Hit breakpoint 2
+  debugger time: Tue Oct 20 11:17:57.197 2026 (UTC + 7:00)

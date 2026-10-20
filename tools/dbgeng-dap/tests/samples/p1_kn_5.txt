@@ -1,0 +1,6 @@
+ # Child-SP          RetAddr               Call Site
+00 (Inline Function) --------`--------     UnrealEditor_MyGame!TCheckedPointerIterator<UMatchDataAsset * const,int,0>::{ctor} [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\Core\Public\Containers\Array.h @ 217]
+01 (Inline Function) --------`--------     UnrealEditor_MyGame!TArray<UMatchDataAsset *,TSizedDefaultAllocator<32> >::begin [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\Core\Public\Containers\Array.h @ 3626]
+02 000000c5`44b7cb90 00007ffd`03be39cd     UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs+0xc5 [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 38]
+03 000000c5`44b7cc50 00007ffd`03be3620     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeValidatedSubsystem+0x30d [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 530]
+04 000000c5`44b7cea0 00007ffd`03c1c8e9     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeSubsystems+0xbd0 [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 465]

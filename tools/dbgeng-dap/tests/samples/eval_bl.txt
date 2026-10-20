@@ -1,0 +1,2 @@
+ 0 e 00007ffc`192fb140 [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 11]    0001 (0001)  0:**** UnrealEditor_MyGame!UMatchSubsystem::Initialize (Condition: this == 0)
+ 1 e 00007ffc`192fb650 [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 34]    0001 (0001)  0:**** UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs (Condition: this != 0)

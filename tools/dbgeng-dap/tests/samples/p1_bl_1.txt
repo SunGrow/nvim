@@ -1,0 +1,2 @@
+ 0 e 00007ffc`1cb9b715 [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 38]    0001 (0001)  0:**** UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs+0xc5
+ 1 e 00007ffc`1cb9b73e [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 40]    0001 (0001)  0:**** UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs+0xee (Condition: LoadedConfigs.ArrayNum > 0)

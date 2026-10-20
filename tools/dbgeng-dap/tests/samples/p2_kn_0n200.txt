@@ -1,0 +1,18 @@
+ # Child-SP          RetAddr               Call Site
+00 (Inline Function) --------`--------     UnrealEditor_MyGame!TCheckedPointerIterator<UMatchDataAsset * const,int,0>::{ctor} [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\Core\Public\Containers\Array.h @ 217]
+01 (Inline Function) --------`--------     UnrealEditor_MyGame!TArray<UMatchDataAsset *,TSizedDefaultAllocator<32> >::begin [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\Core\Public\Containers\Array.h @ 3626]
+02 0000003c`ab57cae0 00007ffd`03be39cd     UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs+0xc5 [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 38]
+03 0000003c`ab57cba0 00007ffd`03be3620     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeValidatedSubsystem+0x30d [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 530]
+04 0000003c`ab57cdf0 00007ffd`03c1c8e9     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeSubsystems+0xbd0 [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 465]
+05 0000003c`ab57d070 00007ffd`02a9780a     UnrealEditor_Engine!FSubsystemCollectionBase::Initialize+0x5f9 [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 262]
+06 0000003c`ab57d240 00007ffd`02a1303e     UnrealEditor_Engine!UGameInstance::Init+0x90a [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\GameInstance.cpp @ 129]
+07 0000003c`ab57d3c0 00007ff7`3984d2a8     UnrealEditor_Engine!UGameEngine::Init+0x64e [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\GameEngine.cpp @ 1267]
+08 0000003c`ab57d5b0 00007ff7`3984c3c5     UnrealEditor!FEngineLoop::Init+0x8a8 [D:\build\++UE5\Sync\Engine\Source\Runtime\Launch\Private\LaunchEngineLoop.cpp @ 4828]
+09 (Inline Function) --------`--------     UnrealEditor!EngineInit+0x5 [D:\build\++UE5\Sync\Engine\Source\Runtime\Launch\Private\Launch.cpp @ 50]
+0a 0000003c`ab57db70 00007ff7`398512b7     UnrealEditor!GuardedMain+0x355 [D:\build\++UE5\Sync\Engine\Source\Runtime\Launch\Private\Launch.cpp @ 174]
+0b 0000003c`ab57ecd0 00007ff7`39865c74     UnrealEditor!LaunchWindowsStartup+0x277 [D:\build\++UE5\Sync\Engine\Source\Runtime\Launch\Private\Windows\LaunchWindows.cpp @ 266]
+0c 0000003c`ab57fd20 00007ff7`3986902a     UnrealEditor!WinMain+0x14 [D:\build\++UE5\Sync\Engine\Source\Runtime\Launch\Private\Windows\LaunchWindows.cpp @ 338]
+0d (Inline Function) --------`--------     UnrealEditor!invoke_main+0x21 [D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl @ 102]
+0e 0000003c`ab57fd60 00007fff`bf66cd87     UnrealEditor!__scrt_common_main_seh+0x106 [D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl @ 288]
+0f 0000003c`ab57fda0 00007fff`c192caec     KERNEL32!BaseThreadInitThunk+0x17
+10 0000003c`ab57fdd0 00000000`00000000     ntdll!RtlUserThreadStart+0x2c

@@ -1,0 +1,5 @@
+class UMatchSubsystem * this = 0x000001fd`f27117c0
+class TArray<UMatchDataAsset *,TSizedDefaultAllocator<32> > LoadedConfigs = Num=3, Max=4
+struct TCheckedPointerIterator<UMatchDataAsset * const,int,0> <begin>$L0 = struct TCheckedPointerIterator<UMatchDataAsset * const,int,0>
+class UMatchDataAsset * Config = 0x000001fd`feffce40
+int MatchId = 0n1

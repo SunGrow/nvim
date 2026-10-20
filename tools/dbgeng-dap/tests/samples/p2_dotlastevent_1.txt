@@ -1,0 +1,2 @@
+Last event: fbc8.f834: Exit process 0:fbc8, code 80004005
+  debugger time: Tue Oct 20 11:12:15.500 2026 (UTC + 7:00)

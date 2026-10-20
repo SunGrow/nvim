@@ -1,0 +1,6 @@
+*** WARNING: Unable to verify timestamp for UnrealEditor.exe
+Child-SP          RetAddr               Call Site
+000000fd`0bf7ca08 00007ffd`03be39cd     UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 34]
+000000fd`0bf7ca10 00007ffd`03be3620     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeValidatedSubsystem+0x30d [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 530]
+000000fd`0bf7cc60 00007ffd`03c1c8e9     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeSubsystems+0xbd0 [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 465]
+000000fd`0bf7cee0 00007ffd`02a9780a     UnrealEditor_Engine!FSubsystemCollectionBase::Initialize+0x5f9 [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 262]

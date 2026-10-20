@@ -1,0 +1,7 @@
+ # Child-SP          RetAddr               Call Site
+00 (Inline Function) --------`--------     UnrealEditor_MyGame!UE::CoreUObject::Private::FObjectHandlePrivate::{ctor} [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\CoreUObject\Public\UObject\ObjectHandle.h @ 111]
+01 (Inline Function) --------`--------     UnrealEditor_MyGame!UE::CoreUObject::Private::MakeObjectHandle [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\CoreUObject\Public\UObject\ObjectHandle.h @ 570]
+02 (Inline Function) --------`--------     UnrealEditor_MyGame!FObjectPtr::{ctor} [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\CoreUObject\Public\UObject\ObjectPtr.h @ 72]
+03 (Inline Function) --------`--------     UnrealEditor_MyGame!TObjectPtr<UMatchDataAsset>::{ctor} [D:\UnrealEngine\UE_5.8\Engine\Source\Runtime\CoreUObject\Public\UObject\ObjectPtr.h @ 595]
+04 0000009c`e2f7c610 00007ffd`03be39cd     UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs+0x17f [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 46]
+05 0000009c`e2f7c6d0 00007ffd`03be3620     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeValidatedSubsystem+0x30d [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 530]

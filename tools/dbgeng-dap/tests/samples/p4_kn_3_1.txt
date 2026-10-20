@@ -1,0 +1,4 @@
+ # Child-SP          RetAddr               Call Site
+00 0000009a`9737c5c8 00007ffc`1d1cb679     UnrealEditor_Core!FString::FString [D:\build\++UE5\Sync\Engine\Source\Runtime\Core\Private\Containers\String.cpp.inl @ 241]
+01 0000009a`9737c5d0 00007ffd`03be39cd     UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs+0x29 [D:\Projects\MyGame\Source\MyGame\Framework\MatchConfig\MatchSubsystem.cpp @ 35]
+02 0000009a`9737c690 00007ffd`03be3620     UnrealEditor_Engine!FSubsystemCollectionBase::AddAndInitializeValidatedSubsystem+0x30d [D:\build\++UE5\Sync\Engine\Source\Runtime\Engine\Private\Subsystems\SubsystemCollection.cpp @ 530]

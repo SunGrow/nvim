@@ -1,0 +1,2 @@
+Last event: 10c48.e0b8: Break instruction exception - code 80000003 (first chance)
+  debugger time: Tue Oct 20 11:18:14.142 2026 (UTC + 7:00)

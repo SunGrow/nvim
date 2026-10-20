@@ -1,0 +1,10 @@
+rax=0000000000000000 rbx=0000028718defc80 rcx=0000028701001020
+rdx=000000c543f78000 rsi=000002884654ca80 rdi=0000000000000000
+rip=00007ffc1cb9b715 rsp=000000c544b7cb90 rbp=000000c544b7cc10
+ r8=000002870132b440  r9=0000028701000000 r10=000000c543f78000
+r11=000000c544b7c928 r12=000002889aea6548 r13=0000000000000000
+r14=0000028718defc80 r15=0000000000000009
+iopl=0         nv up ei pl nz na po nc
+cs=0033  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00000202
+UnrealEditor_MyGame!TCheckedPointerIterator<UMatchDataAsset * const,int,0>::{ctor} [inlined in UnrealEditor_MyGame!UMatchSubsystem::LoadAndIndexMatchConfigs+0xc5]:
+00007ffc`1cb9b715 488b75d0        mov     rsi,qword ptr [rbp-30h] ss:000000c5`44b7cbe0=000002889c49a5a0
