@@ -260,19 +260,9 @@ if is_ue_project then
       vim.bo.filetype = 'hlsl'
     end,
   })
-end
 
-local ubt_presets = nil
-if project_name ~= nil then
-  -- UBT.nvim currently derives invalid target names for default presets on Windows.
-  -- We pin explicit TargetName values to keep build and compile DB commands stable.
-  ubt_presets = {
-    { name = 'Win64DebugGame', TargetName = project_name, Platform = 'Win64', IsEditor = false, Configuration = 'DebugGame' },
-    { name = 'Win64Develop', TargetName = project_name, Platform = 'Win64', IsEditor = false, Configuration = 'Development' },
-    { name = 'Win64Shipping', TargetName = project_name, Platform = 'Win64', IsEditor = false, Configuration = 'Shipping' },
-    { name = 'Win64DebugGameWithEditor', TargetName = project_name .. 'Editor', Platform = 'Win64', IsEditor = true, Configuration = 'DebugGame' },
-    { name = 'Win64DevelopWithEditor', TargetName = project_name .. 'Editor', Platform = 'Win64', IsEditor = true, Configuration = 'Development' },
-  }
+  -- Reopen last files when started in the project without arguments (lua/ue/session.lua).
+  require('ue.session').setup()
 end
 
 -- UNL startup race: unl-server registers the project a few hundred ms after it starts, but UEA's code lens
@@ -364,19 +354,41 @@ return {
     cond = is_ue_project,
     cmd = { 'UBT' },
     dependencies = { 'taku25/UNL.nvim' },
-    opts = {
-      preset_target = 'Win64DevelopWithEditor',
-      use_last_preset_as_default = false,
-      presets = ubt_presets or {},
-    },
+    -- Presets are generated like Rider's run configurations (lua/ue/run.lua): one per
+    -- Source/*.Target.cs target x buildable configuration, named "DebugGame Editor", "Development", ...
+    -- UBT's own dynamic presets (every target UNL knows x every configuration) are not used.
+    opts = function()
+      local run = require('ue.run')
+      local dev_editor = vim.tbl_filter(function(c)
+        return c.type == 'Editor' and c.configuration == 'Development'
+      end, run.list())[1]
+      return {
+        preset_target = dev_editor and dev_editor.name or 'Development Editor', -- compile DB / plain :UBT build
+        use_last_preset_as_default = false,
+        presets = run.ubt_presets(),
+        -- UBT logs every compiler warning at WARN, and the default echo level (warn) prints each one
+        -- with nvim_echo: a long line raises a hit-enter prompt that stalls the build output (and
+        -- with it the launch after the build) until ENTER. Keep the log file; ue.run reports the result.
+        logging = { echo = { level = 'off' }, notify = { level = 'off' } },
+      }
+    end,
+    -- Rider (VS Code keymap) equivalents: F5 debug / Shift+F5 stop live in lang-cpp.lua with nvim-dap.
     -- stylua: ignore
     keys = {
-      { '<leader>bb', '<cmd>UBT build<CR>', desc = 'Build' },
-      { '<leader>bB', '<cmd>UBT build!<CR>', desc = 'Build (pick target)' },
+      { '<C-F5>', function() require('ue.run').run() end, desc = 'Run selected configuration (no debugger)' },
+      { '<C-S-b>', function() require('ue.run').build() end, desc = 'Build selected configuration' },
+      { '<leader>bc', function() require('ue.run').pick() end, desc = 'Choose run configuration' },
+      { '<leader>bb', function() require('ue.run').build() end, desc = 'Build selected configuration' },
+      { '<leader>bB', function() require('ue.run').pick(require('ue.run').build) end, desc = 'Build (pick configuration)' },
+      { '<leader>bD', function() require('ue.run').debug() end, desc = 'Debug selected configuration' },
+      { '<leader>bS', function() require('ue.run').pick(require('ue.run').debug) end, desc = 'Debug (pick configuration)' },
+      { '<leader>bx', function() require('ue.run').run() end, desc = 'Run selected configuration' },
+      { '<leader>bX', function() require('ue.run').pick(require('ue.run').run) end, desc = 'Run (pick configuration)' },
+      { '<leader>bR', function() require('ue.run').run_no_build() end, desc = 'Run selected without building' },
+      { '<leader>bs', function() require('ue.run').stop() end, desc = 'Stop (debug session / run / build)' },
       { '<leader>bj', '<cmd>UBT gen_compile_db<CR>', desc = 'Generate compile_commands.json' },
       { '<leader>bJ', '<cmd>UBT gen_project<CR>', desc = 'Generate .sln' },
       { '<leader>be', '<cmd>UBT diagnostics<CR>', desc = 'Build diagnostics' },
-      { '<leader>bx', '<cmd>UBT run!<CR>', desc = 'Run (pick target)' },
       { '<leader>Uh', '<cmd>UBT gen_header<CR>', desc = 'Unreal: Generate headers (UHT)' },
     },
   },
@@ -738,11 +750,7 @@ return {
           or vim.fs.normalize(vim.fn.stdpath('config') .. '/tools/dbgeng-dap/dbgeng-dap.py')) and 'dbgeng' or 'codelldb',
       },
     },
-    -- stylua: ignore
-    keys = {
-      { '<leader>bD', '<cmd>UDB run_debug<CR>', desc = 'Debug (default target)' },
-      { '<leader>bS', '<cmd>UDB run_debug!<CR>', desc = 'Debug (select target)' },
-    },
+    -- Launch keys are the generated run configurations (UBT spec above); :UDB stays available.
   },
 
   -- UE-specific completion source for blink.cmp.

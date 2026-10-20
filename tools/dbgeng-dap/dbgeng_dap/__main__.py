@@ -46,13 +46,26 @@ def main(argv=None):
     else:
         stream = DapStream(sys.stdin.buffer, sys.stdout.buffer, log)
         sys.stdout = sys.stderr  # nothing else may write to the protocol stream
-    Session(stream, log).run()
-    log('dbgeng-dap exit')
-    try:
-        sys.stderr.flush()
-    finally:
-        # daemon threads may still block in stdin/socket reads; skip interpreter finalisation
-        os._exit(0)
+    def hard_exit():
+        log('dbgeng-dap exit')
+        try:
+            sys.stderr.flush()
+        finally:
+            if sys.platform == 'win32':
+                # nvim-dap kills the adapter (TerminateProcess, exit code 1 -> "exited with 1") as soon
+                # as it reads the last message; ExitProcess (os._exit) is slow enough to lose that race.
+                # Written pipe data stays readable after the process is gone.
+                import ctypes
+                k32 = ctypes.windll.kernel32
+                k32.GetCurrentProcess.restype = ctypes.c_void_p
+                k32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+                k32.TerminateProcess(k32.GetCurrentProcess(), 0)
+            # daemon threads may still block in stdin/socket reads; skip interpreter finalisation
+            os._exit(0)
+
+    # The session calls hard_exit itself right after its last message (see Session._finish).
+    Session(stream, log, exit_fn=hard_exit).run()
+    hard_exit()
 
 
 if __name__ == '__main__':

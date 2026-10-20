@@ -115,7 +115,16 @@ return {
       { '<leader>du', function() require('dapui').toggle() end, desc = 'Toggle DAP UI' },
       { '<leader>de', function() require('dapui').eval() end, desc = 'Eval expression', mode = { 'n', 'v' } },
       { '<leader>dh', function() require('dap.ui.widgets').hover() end, desc = 'Hover value under cursor', mode = { 'n', 'v' } },
-      { '<F5>', function() require('dap').continue() end, desc = 'Debug: Continue' },
+      -- UE projects: with no session, F5 builds and debugs the selected run configuration (lua/ue/run.lua)
+      { '<F5>', function()
+        local dap = require('dap')
+        if not dap.session() and require('core.context').is_ue then return require('ue.run').debug() end
+        dap.continue()
+      end, desc = 'Debug: Start / Continue' },
+      { '<S-F5>', function()
+        if require('core.context').is_ue then return require('ue.run').stop() end
+        require('dap').terminate()
+      end, desc = 'Debug: Stop' },
       { '<F9>', function() require('dap').toggle_breakpoint() end, desc = 'Debug: Toggle breakpoint' },
       { '<F10>', function() require('dap').step_over() end, desc = 'Debug: Step over' },
       { '<F11>', function() require('dap').step_into() end, desc = 'Debug: Step into' },

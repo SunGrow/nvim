@@ -61,7 +61,20 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 - UDB.nvim owns DAP launch config in UE projects — `lang-cpp.lua` skips codelldb setup when `.uproject` is found and instead registers the `dbgeng` adapter (`tools/dbgeng-dap` in this repo, override with `$DBGENG_DAP_PATH`) plus an "Attach to UnrealEditor" config; `lang-ue.lua` sets UDB `adapter_type = 'dbgeng'` when that script exists, else `codelldb`
 - `lsp.lua` adjusts clangd flags for UE: `--header-insertion=never`, no `--clang-tidy`, `--pch-storage=disk`
 - blink-cmp-unreal extends blink.cmp via lazy.nvim spec merging (`optional = true` + `opts_extend`)
-- UBT presets are pinned with explicit TargetName values (UBT derives invalid names on Windows by default)
+- Run configurations (`lua/ue/run.lua`) are generated the way Rider builds them:
+  - One configuration per `Source/*.Target.cs` target and per configuration the engine can build. An installed engine builds DebugGame and Development for the Editor target, plus Shipping for Game targets.
+  - They are named like Rider's dropdown: "DebugGame Editor", "DebugGame", "Development Editor", "Development", "Shipping".
+  - The same list becomes the UBT presets, so UBT's own dynamic presets (every target × every configuration) are not used.
+  - Every run builds first through UBT, then launches.
+  - Keys follow Rider's VS Code keymap:
+    - F5: debug, or continue in a session
+    - Ctrl+F5: run without the debugger
+    - Shift+F5: stop
+    - Ctrl+Shift+B: build
+  - `<leader>bc` (or a click on the `▶` statusline item) chooses the configuration. The choice is remembered per project in `stdpath('state')/ue-run/<project>.json`.
+  - UBT's echo and notify logging are off. It logs every compiler warning at WARN, and each long echo raised a hit-enter prompt that stalled the build output and the launch after it. `ue.run` reports one line per build and opens `:UBT diagnostics` when a build fails. The full log is in `stdpath('cache')/UBT/`.
+- dbgeng-dap ends its process (TerminateProcess with code 0) right after its last message, `terminated` or the `disconnect` response. nvim-dap kills the adapter as soon as it reads that message, and the kill exits with code 1, which shows as "adapter exited with 1".
+- `lua/ue/session.lua` restores the project's last files when Neovim starts in a UE project without file arguments (`stdpath('state')/sessions/<project>.vim`). Headless runs never save or restore.
 - UNL Telescope callback picker is monkey-patched in `lang-ue.lua` to fix prompt buffer crashes on dynamic selection
 - `UNL.db.get_file_symbols` is wrapped in `lang-ue.lua` to retry "Project not found"/ECONNREFUSED for up to 10 s. unl-server registers the project a few hundred ms after it starts, and UEA's first lens query used to lose that race: an error plus an ENTER prompt at startup.
 - UCM parent picker uses UNL streaming picker (`source.type = 'callback'`) instead of raw `finders.new_table` — the latter breaks at UE-scale datasets (57K+ entries). Entries are priority-sorted: engine base classes (static list) → main game module → plugins → everything else

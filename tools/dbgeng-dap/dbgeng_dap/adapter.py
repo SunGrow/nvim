@@ -81,8 +81,10 @@ def _simple_expr(e):
 
 
 class Session:
-    def __init__(self, stream, log):
+    def __init__(self, stream, log, exit_fn=None):
         self.s, self.log = stream, log
+        self.exit_fn = exit_fn       # ends the process once the client was told the session is over
+        self.finished = False
         self.cdb = None
         self.slock = threading.RLock()
         self.work = queue.Queue()
@@ -453,21 +455,44 @@ class Session:
         st = P.parse_stack(self.x(f'~~[0x{tid:x}]kn 3'))
         return any(f['function'].startswith('DbgUiRemoteBreakin') for f in st)
 
+    def _finish(self, event=True):
+        """End the session. nvim-dap closes the adapter as soon as it sees `terminated` (or the
+        disconnect response): it closes stdin and kills the process right away, which on Windows
+        is TerminateProcess with exit code 1 and a "exited with 1" warning. So all cleanup happens
+        before this, and the process ends right after the last message."""
+        if self.finished:
+            return
+        self.finished = True
+        self.flush_output()
+        if event:
+            self.s.event('terminated')
+        self.done.set()
+        if self.exit_fn:
+            self.exit_fn()
+
+    def _quit_cdb(self):
+        try:
+            self.cdb.write_raw('q')
+            self.cdb.proc.wait(5)
+        except Exception as e:
+            self.log(f'quit cdb: {e!r}; killing cdb')
+            self.cdb.kill()
+
     def _target_exited(self, code):
         if self.exited_sent:
             return
         self.exited_sent = True
         self.flush_output()
         self.s.event('exited', {'exitCode': code & 0xFFFFFFFF})
-        self.s.event('terminated')
         self.terminating = True
-        self.cdb.write_raw('q')
+        self._quit_cdb()
+        self._finish()
 
     def _on_cdb_exit(self):
         if not self.exited_sent and not self.terminating:
             self.exited_sent = True
-            self.flush_output()
-            self.s.event('terminated')
+            self.terminating = True
+            self._finish()
 
     def with_target_stopped(self, fn):
         """Run fn() with the target stopped; break in (and resume afterwards) if it is running."""
@@ -515,14 +540,12 @@ class Session:
     def req_disconnect(self, a):
         terminate = a.get('terminateDebuggee', self.launched)
         self.shutdown(terminate)
-        return {}
+        raise _Then({}, lambda: self._finish(event=False))
 
     def req_terminate(self, a):
         self.shutdown(True)
-        if not self.exited_sent:
-            self.exited_sent = True
-            self.s.event('terminated')
-        return {}
+        self.exited_sent = True
+        raise _Then({}, self._finish)
 
     # ================================================================== breakpoints
     def _resolver(self):

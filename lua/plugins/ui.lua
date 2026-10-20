@@ -49,6 +49,14 @@ return {
             color = { fg = '#9ece6a' },
             cond = function() return ue_project_name ~= '' end,
           },
+          {
+            -- selected run configuration, like Rider's toolbar dropdown; click to choose another
+            function() return require('ue.run').status() end,
+            icon = '▶',
+            color = { fg = '#e0af68' },
+            cond = function() return ue_project_name ~= '' end,
+            on_click = function() require('ue.run').pick() end,
+          },
           -- NOTE: LSP progress is handled by fidget.nvim (top-right spinner).
           -- fidget consumes the LSP progress ring buffer, so vim.lsp.status()
           -- returns empty when fidget is active. Don't duplicate it here.
