@@ -13,6 +13,9 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
 - `lua/core/` — editor fundamentals (leader key MUST be set before lazy.nvim loads); `context.lua` provides project-type detection
 - `lua/plugins/` — one file per plugin concern; lazy.nvim auto-discovers all `*.lua` files in this directory via `require('lazy').setup('plugins')`
 - All plugins default to `lazy = true` in `lua/core/lazy.lua`
+- `colors/rider-denis-dark.lua` is a colorscheme made from a Rider editor scheme. Its colors are the `.icls` values, with inherited ones taken from Rider's bundled `RiderDark.xml`. clangd semantic tokens (`@lsp.typemod.variable.functionScope`, `@lsp.type.method`, ...) carry ReSharper C++'s identifier colors.
+  - The default theme is `catppuccin-latte`. `<leader>uc` opens a theme picker with preview.
+  - The last chosen theme is restored from `stdpath('state')/colorscheme` (`lua/plugins/colorscheme.lua`).
 
 **Key design patterns:**
 - `lua/core/context.lua` detects project type once at startup (`.uproject` → UE) and caches the result — all files use `require('core.context')` instead of inline `vim.fs.find`
