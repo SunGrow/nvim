@@ -1,4 +1,11 @@
-local has_make = vim.fn.executable('make') == 1
+-- Avoid vim.fn.executable('make') at startup (~28-60 ms on Windows PATH scans):
+-- if the fzf-native library is already built, a file stat is enough. `make` is only probed
+-- when the library is missing (fresh install) so lazy.nvim can still build it.
+local fzf_dir = vim.fn.stdpath('data') .. '/lazy/telescope-fzf-native.nvim/build/'
+local fzf_built = vim.uv.fs_stat(fzf_dir .. 'libfzf.dll') ~= nil
+  or vim.uv.fs_stat(fzf_dir .. 'libfzf.so') ~= nil
+  or vim.uv.fs_stat(fzf_dir .. 'libfzf.dylib') ~= nil
+local use_fzf = fzf_built or vim.fn.executable('make') == 1
 
 return {
   'nvim-telescope/telescope.nvim',
@@ -8,8 +15,12 @@ return {
     { 'nvim-tree/nvim-web-devicons' },
     {
       'nvim-telescope/telescope-fzf-native.nvim',
-      build = has_make and 'make' or nil,
-      cond = has_make,
+      build = function(plugin)
+        if vim.fn.executable('make') == 1 then
+          vim.system({ 'make' }, { cwd = plugin.dir }):wait()
+        end
+      end,
+      cond = use_fzf,
     },
   },
   keys = {

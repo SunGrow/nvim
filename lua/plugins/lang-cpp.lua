@@ -10,6 +10,20 @@ return {
         opts = {},
       },
       {
+        -- variable values as end-of-line virtual text while stopped (works with any adapter: codelldb, dbgeng)
+        'theHamsta/nvim-dap-virtual-text',
+        opts = {
+          virt_text_pos = 'eol',
+          highlight_changed_variables = true,
+          -- hide not-yet-live locals (DbgEng: "Value unavailable error for X") instead of printing noise
+          display_callback = function(variable)
+            local v = (variable.value or ''):gsub('%s+', ' ')
+            if v:find('Value unavailable', 1, true) then return nil end
+            return variable.name .. ' = ' .. v
+          end,
+        },
+      },
+      {
         'jay-babu/mason-nvim-dap.nvim',
         dependencies = { 'mason-org/mason.nvim' },
         opts = {
@@ -63,6 +77,22 @@ return {
           },
         }
         dap.configurations.c = dap.configurations.cpp
+      else
+        -- UE: DbgEng (WinDbg engine) adapter from tools/dbgeng-dap (or $DBGENG_DAP_PATH).
+        -- PDB + Unreal.natvis aware; UDB launches use it via adapter_type = 'dbgeng' (lang-ue.lua).
+        local dbgeng_dap = vim.env.DBGENG_DAP_PATH
+          or vim.fs.normalize(vim.fn.stdpath('config') .. '/tools/dbgeng-dap/dbgeng-dap.py')
+        if vim.uv.fs_stat(dbgeng_dap) then
+          dap.adapters.dbgeng = { type = 'executable', command = 'python', args = { '-I', dbgeng_dap } }
+          dap.configurations.cpp = {
+            {
+              name = 'Attach to UnrealEditor',
+              type = 'dbgeng',
+              request = 'attach',
+              processId = function() return require('dap.utils').pick_process({ filter = 'UnrealEditor' }) end,
+            },
+          }
+        end
       end
 
       -- Auto open/close DAP UI on debug sessions (universal)
@@ -84,6 +114,7 @@ return {
       { '<leader>dt', function() require('dap').terminate() end, desc = 'Terminate' },
       { '<leader>du', function() require('dapui').toggle() end, desc = 'Toggle DAP UI' },
       { '<leader>de', function() require('dapui').eval() end, desc = 'Eval expression', mode = { 'n', 'v' } },
+      { '<leader>dh', function() require('dap.ui.widgets').hover() end, desc = 'Hover value under cursor', mode = { 'n', 'v' } },
       { '<F5>', function() require('dap').continue() end, desc = 'Debug: Continue' },
       { '<F9>', function() require('dap').toggle_breakpoint() end, desc = 'Debug: Toggle breakpoint' },
       { '<F10>', function() require('dap').step_over() end, desc = 'Debug: Step over' },

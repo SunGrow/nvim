@@ -58,13 +58,24 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 - Filetype detection (`.uproject`→json, `.ush`/`.usf`→hlsl) is handled inline in `lang-ue.lua` via autocmds
 - UE indentation (tabs, width 4) is set via FileType autocmd for c/cpp — `.editorconfig` overrides if present
 - UEA uses `ft = { 'cpp', 'c' }` trigger (not just `cmd`) so Code Lens registers before C++ buffers open
-- UDB.nvim owns DAP config in UE projects — `lang-cpp.lua` skips codelldb setup when `.uproject` is found
+- UDB.nvim owns DAP launch config in UE projects — `lang-cpp.lua` skips codelldb setup when `.uproject` is found and instead registers the `dbgeng` adapter (`tools/dbgeng-dap` in this repo, override with `$DBGENG_DAP_PATH`) plus an "Attach to UnrealEditor" config; `lang-ue.lua` sets UDB `adapter_type = 'dbgeng'` when that script exists, else `codelldb`
 - `lsp.lua` adjusts clangd flags for UE: `--header-insertion=never`, no `--clang-tidy`, `--pch-storage=disk`
 - blink-cmp-unreal extends blink.cmp via lazy.nvim spec merging (`optional = true` + `opts_extend`)
 - UBT presets are pinned with explicit TargetName values (UBT derives invalid names on Windows by default)
 - UNL Telescope callback picker is monkey-patched in `lang-ue.lua` to fix prompt buffer crashes on dynamic selection
 - UCM parent picker uses UNL streaming picker (`source.type = 'callback'`) instead of raw `finders.new_table` — the latter breaks at UE-scale datasets (57K+ entries). Entries are priority-sorted: engine base classes (static list) → main game module → plugins → everything else
 - `<leader>Un` auto-runs `UBT gen_compile_db` after successful class/struct creation via the UCM `on_complete` callback, so clangd immediately picks up new files
+- `ue_ls` (`tools/ue-lsp` in this repo, stdlib Python LSP; override path with `$UE_LSP_PATH`) is configured in `lsp.lua` only in UE projects and only if the script exists: `.ini` section/key/value completion, hover, go-to-definition, diagnostics; C++ specifier/meta hover + diagnostics. Its C++ completion is off (`init_options.cpp.completion = false`) because blink-cmp-unreal provides it. Root detection uses a `root_dir` function because `vim.fs.root` does not accept `*.uproject` globs
+- Engine navigation (`lsp.lua`):
+  - The engine root comes from the project `compile_commands.json` `directory` field.
+  - The project `clangd` gets `--compile-commands-dir=<project>` and a `root_dir` function. Project files and engine headers attach to it; engine `.cpp` files do not. Without this, Neovim starts an extra flag-less clangd for any engine file, because the engine tree has no root marker.
+  - Engine `.cpp` files go to `clangd_engine`, which uses ue-lsp's synthesized `%LOCALAPPDATA%/ue-lsp/cache/engine-cdb` and has no background index.
+  - `gd` in UE projects asks clangd first. When clangd returns only header declarations, it uses clangd `textDocument/symbolInfo` plus ue_ls `ue.findImpl` to jump to the out-of-line body; several hits go to quickfix.
+- Blueprint values:
+  - ue_ls code lens on UPROPERTY lines in headers. Engine headers attach to ue_ls too, so engine properties show their Blueprint values.
+  - `<leader>Ul` runs the lens and `<leader>Uv` lists the values of the property under the cursor. Both open a Telescope picker; `<CR>` copies the asset path.
+  - The client-side command handler is `vim.lsp.commands['ue.bpValues']`.
+- `core/context.lua` also detects the project from the first file argument (`nvim path/to/Project.uproject` or a file inside a project from another cwd) and then `cd`s to the project root so cwd-based UE tooling works
 
 **Prerequisites:** Rust/Cargo, fd, ripgrep
 

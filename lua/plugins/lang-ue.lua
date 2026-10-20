@@ -41,9 +41,12 @@ end
 
 -- UNL Telescope callback picker compatibility patch.
 -- Fixes dynamic picker selection crashes caused by invalid prompt buffer handling.
+-- Only for UNL versions that still route callback sources through provider.run_callback
+-- (up to 2026-02); later UNL rewrote the provider (prepare_source + behaviour modes) and has no such hook.
 local function patch_unl_telescope_provider()
   local ok, provider = pcall(require, 'UNL.backend.picker.provider.telescope')
-  if not ok or type(provider) ~= 'table' or provider._lazyf_patch_applied then
+  if not ok or type(provider) ~= 'table' or provider._lazyf_patch_applied
+    or type(provider.run_callback) ~= 'function' then
     return
   end
 
@@ -494,10 +497,13 @@ return {
               end
             end
 
-            -- Use UNL streaming picker (routes through patched run_callback)
+            -- Use UNL streaming picker. UNL >= 2026-07 needs the caller's plugin config (`conf`,
+            -- for ui.picker.behaviour); without it the telescope provider errors and nothing is shown.
             local data_map = kind == 'Class' and class_data_map or struct_data_map
             require('UNL.picker').open({
               kind = 'ucm_parent_picker',
+              conf = require('UCM.config').get(),
+              logger_name = 'UCM',
               title = kind == 'Class' and '  Select Parent Class' or '  Select Parent Struct',
               source = {
                 type = 'callback',
@@ -693,7 +699,13 @@ return {
       'taku25/UNL.nvim',
       'mfussenegger/nvim-dap',
     },
-    opts = {},
+    -- dbgeng adapter is registered in lang-cpp.lua when tools/dbgeng-dap exists; else UDB's codelldb default
+    opts = {
+      debugger = {
+        adapter_type = vim.uv.fs_stat(vim.env.DBGENG_DAP_PATH
+          or vim.fs.normalize(vim.fn.stdpath('config') .. '/tools/dbgeng-dap/dbgeng-dap.py')) and 'dbgeng' or 'codelldb',
+      },
+    },
     -- stylua: ignore
     keys = {
       { '<leader>bD', '<cmd>UDB run_debug<CR>', desc = 'Debug (default target)' },
