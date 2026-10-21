@@ -95,7 +95,12 @@ return {
 
     -- Configure clangd for C++
     -- NOTE: --offset-encoding removed — Neovim 0.11 negotiates encoding natively
-    local clangd_conf = { capabilities = capabilities, cmd = clangd_cmd }
+    -- clangd.fileStatus: per-file parse state for the statusline (lua/core/clangd.lua)
+    local clangd_status = {
+      init_options = { clangdFileStatus = true },
+      handlers = { ['textDocument/clangd.fileStatus'] = function(...) return require('core.clangd').on_file_status(...) end },
+    }
+    local clangd_conf = vim.tbl_extend('error', { capabilities = capabilities, cmd = clangd_cmd }, clangd_status)
     if is_ue_project then
       -- One compile DB for project files and the engine headers they include (otherwise an engine
       -- header has no root marker and Neovim starts a second, flag-less clangd for it).
@@ -111,7 +116,7 @@ return {
     vim.lsp.config('clangd', clangd_conf)
 
     if is_ue_project then
-      vim.lsp.config('clangd_engine', {
+      vim.lsp.config('clangd_engine', vim.tbl_extend('error', clangd_status, {
         capabilities = capabilities,
         cmd = {
           clangd_bin, '--compile-commands-dir=' .. engine_cdb, '--background-index=false',
@@ -122,7 +127,7 @@ return {
         root_dir = function(bufnr, on_dir)
           if is_engine_cpp(vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))) then on_dir(engine_root()) end
         end,
-      })
+      }))
       vim.lsp.enable('clangd_engine')
       -- Engine ASTs are large (~1 GB for Actor.cpp): stop the engine clangd once no engine .cpp
       -- buffer is left, so its memory is only spent while browsing engine code.
@@ -297,6 +302,9 @@ return {
         map('<leader>li', '<cmd>LspInfo<CR>', 'LSP info')
 
         -- clangd-specific: register ClangdSwitchSourceHeader command (used by <M-o>)
+        if client and (client.name == 'clangd' or client.name == 'clangd_engine') then
+          require('core.clangd').on_attach(client, event.buf) -- parse status, counterpart prewarming
+        end
         local clangd = vim.lsp.get_clients({ bufnr = event.buf, name = 'clangd' })[1]
         if clangd then
           vim.api.nvim_buf_create_user_command(event.buf, 'ClangdSwitchSourceHeader', function()

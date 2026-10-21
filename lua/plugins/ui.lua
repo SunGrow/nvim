@@ -44,6 +44,12 @@ return {
             color = { fg = '#7aa2f7' },
           },
           {
+            -- clangd still parsing this file (no semantic colors / navigation yet): "⠋ building preamble"
+            function() return require('core.clangd').text() end,
+            color = { fg = '#e0af68' },
+            cond = function() return package.loaded['core.clangd'] ~= nil end,
+          },
+          {
             function() return ue_project_name end,
             icon = '󰿅',
             color = { fg = '#9ece6a' },
