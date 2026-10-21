@@ -131,17 +131,33 @@ local function layout(blocks, max_cols)
   end
   colw = colw + 3
   local ncols = math.max(1, math.min(3, math.floor(max_cols / colw)))
-  local total = 0
-  for _, b in ipairs(blocks) do total = total + #b.lines + 1 end
-  local target = math.ceil(total / ncols)
-  local columns, cur, h = { {} }, 1, 0
-  for _, b in ipairs(blocks) do
-    if h > 0 and h + #b.lines > target and cur < ncols then
-      cur, h = cur + 1, 0
-      columns[cur] = {}
+  -- split the sections, in order, into ncols runs with the shortest tallest column (few sections:
+  -- try every split)
+  local n = #blocks
+  local best, best_cuts
+  local function height(i, j)
+    local h = 0
+    for k = i, j do h = h + #blocks[k].lines + 1 end
+    return h
+  end
+  local function search(start, left, cuts, worst)
+    if left == 1 then
+      local w = math.max(worst, height(start, n))
+      if not best or w < best then best, best_cuts = w, vim.list_extend(vim.deepcopy(cuts), { n }) end
+      return
     end
-    table.insert(columns[cur], b)
-    h = h + #b.lines + 1
+    for stop = start, n - left + 1 do
+      search(stop + 1, left - 1, vim.list_extend(vim.deepcopy(cuts), { stop }), math.max(worst, height(start, stop)))
+    end
+  end
+  ncols = math.min(ncols, n)
+  search(1, ncols, {}, 0)
+  local columns, first = {}, 1
+  for _, stop in ipairs(best_cuts) do
+    local col = {}
+    for k = first, stop do col[#col + 1] = blocks[k] end
+    columns[#columns + 1] = col
+    first = stop + 1
   end
   local lines, hls = {}, {}
   for c, col in ipairs(columns) do
