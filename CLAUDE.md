@@ -158,6 +158,16 @@ Measured on 8 V2 files at `-j=8` with RAM free: normal priority 3.3 files/min, b
 3. UNL server loads and scans project structure (statusline `UE ⠋ indexing N%`)
 4. clangd will begin background indexing (first run: hours, subsequent: fast)
 
+## WSL (Ubuntu) and other Linux
+
+The same repository is the WSL config: `~/.config/nvim` in WSL is a clone, updated with `git pull --ff-only /mnt/d/Development/projects/utilities/ed/nvim master` (add `-c safe.directory=...` for the /mnt/d repo). `lazy-lock.json` is gitignored, so each side keeps its own plugin versions.
+- WSL runs Neovim 0.12-dev, Windows 0.11. nvim-treesitter's branch follows the version (`lua/plugins/treesitter.lua`): `main` (the rewrite; `install()` + `vim.treesitter.start`, needs the `tree-sitter` CLI and a C compiler) on 0.12, the archived `master` on 0.11.
+- clangd: the distribution's `clangd` on PATH (Ubuntu clangd 21); Mason is not asked for it on Linux, and `lsp.lua` enables it itself (mason-lspconfig's `automatic_enable` covers only Mason-installed servers).
+- codelldb (debugging) is a zip: Mason needs `unzip` (`sudo apt install unzip`); until then it is not requested, so no install error at each start.
+- Unreal mode (`core/context.lua`) is Windows-only: a `.uproject` folder opened from WSL is a plain C++ project.
+- Config hot reload watches each folder on Linux (inotify ignores the recursive flag).
+- Clipboard: Neovim picks xclip (or win32yank.exe from the Windows Neovim) for `unnamedplus`.
+
 ## Hot reload (`lua/core/reload.lua`)
 
 Edits to the live config apply to the running Neovim; no restart. The config folder is watched (libuv `fs_event`, recursive), and changes are applied 300 ms after the last one, so a `git pull` is one reload with one notice listing what was applied. `:ConfigReload` reloads everything by hand.
