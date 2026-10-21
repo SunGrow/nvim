@@ -101,6 +101,7 @@ function M.ignore_current_ensure()
     if l.path:lower() == loc.path:lower() and l.line == loc.line then return end
   end
   ignored[#ignored + 1] = loc
+  ensure_stop = false -- the button goes away once used
   apply()
   vim.notify(('Ensure at %s will not suspend again (F5 continues; <leader>dx brings it back)'):format(where(loc)),
     vim.log.levels.INFO, { title = 'Debug' })
@@ -162,7 +163,7 @@ end
 -- Short enough for a 60-column panel; %< drops the tail first when a panel is narrower.
 local TITLES = {
   dapui_breakpoints = function()
-    return ('%%#Title# Breakpoints (%d) %%*%%<  %s  · ? keys'):format(count_breakpoints(), filters_text())
+    return ('%%#Title# Breakpoints (%d) %%*%%<  %s'):format(count_breakpoints(), filters_text())
   end,
   dapui_scopes = function() return '%#Title# Variables %*%<  ⏎ expand · e edit · ? keys' end,
   dapui_stacks = function() return '%#Title# Call stack %*%<  click/⏎ open frame · ? keys' end,
