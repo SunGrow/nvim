@@ -66,6 +66,21 @@ end, { desc = 'Find usages' })
 
 map('n', '<leader>uh', function() require('core.code').toggle_hints() end, { desc = 'Toggle inline hints' })
 
+-- Click in the line-number / sign gutter of a C/C++ file: breakpoint on / off, as in Rider. A click in
+-- the text is the normal click.
+map('n', '<LeftMouse>', function()
+  local m = vim.fn.getmousepos()
+  local info = m.winid ~= 0 and vim.fn.getwininfo(m.winid)[1]
+  if info and m.line > 0 and m.wincol >= 1 and m.wincol <= info.textoff
+    and vim.tbl_contains({ 'c', 'cpp' }, vim.bo[vim.api.nvim_win_get_buf(m.winid)].filetype) then
+    vim.api.nvim_set_current_win(m.winid)
+    vim.api.nvim_win_set_cursor(m.winid, { m.line, 0 })
+    require('dap').toggle_breakpoint()
+    return
+  end
+  vim.api.nvim_feedkeys(vim.keycode('<LeftMouse>'), 'n', false)
+end, { desc = 'Click (in the gutter of a C++ file: breakpoint on / off)' })
+
 -- F1 — the IDE keys on one screen (lua/core/keyhelp.lua); Vim's own help stays on :help
 map({ 'n', 'i' }, '<F1>', function()
   vim.cmd.stopinsert()

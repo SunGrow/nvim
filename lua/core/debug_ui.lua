@@ -196,6 +196,7 @@ M.KEYS = {
   { key = 'Ctrl+F10', lhs = '<C-F10>', desc = 'Run to cursor' },
   {},
   { key = 'F9', lhs = '<F9>', desc = 'Breakpoint on / off' },
+  { key = 'Click gutter', lhs = '<LeftMouse>', desc = 'Breakpoint on / off (line numbers)' },
   { key = 'Space dB', lhs = '<leader>dB', desc = 'Breakpoint with a condition' },
   { key = 'Space dL', lhs = '<leader>dL', desc = 'List all breakpoints' },
   { key = 'Space dC', lhs = '<leader>dC', desc = 'Delete all breakpoints' },
