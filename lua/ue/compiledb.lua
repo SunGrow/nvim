@@ -156,6 +156,7 @@ local function restart_clangd()
     vim.lsp.enable('clangd') -- runs the FileType autocmds of loaded buffers: they attach to a new clangd
   end))
 end
+M.restart_clangd = restart_clangd
 
 local function finished()
   state.files = nil

@@ -57,6 +57,11 @@ return {
         '--header-insertion=never',
         '--pch-storage=disk',
       })
+      -- while the project's index is (re)built: more threads unless Unreal is running (ue/clangd_index.lua)
+      local index = require('ue.clangd_index')
+      local mode = index.mode()
+      index.apply(clangd_cmd, mode)
+      index.setup(mode)
     else
       vim.list_extend(clangd_cmd, {
         '--clang-tidy',

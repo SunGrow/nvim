@@ -270,6 +270,7 @@ if is_ue_project then
       if ok then
         vim.fn.mkdir(cache, 'p')
         vim.fn.writefile({ 'clangd background index built without UBT -resource-dir' }, marker)
+        require('ue.clangd_index').mark_rebuilding() -- more clangd threads until it is built
       end
     end
   end

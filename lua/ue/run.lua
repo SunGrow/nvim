@@ -191,6 +191,7 @@ end
 local function dap_launch(cfg)
   local dap = require('dap')
   local adapter = dap.adapters.dbgeng and 'dbgeng' or 'codelldb'
+  pcall(function() require('ue.clangd_index').ue_starting() end) -- fewer clangd threads while it runs
   dap.run({
     name = 'UE: ' .. cfg.name, type = adapter, request = 'launch',
     program = cfg.program, args = cfg.args, cwd = cfg.cwd,
@@ -205,6 +206,7 @@ local function start_detached(cfg, extra_args)
   local cmd = { cfg.program }
   vim.list_extend(cmd, cfg.args)
   vim.list_extend(cmd, extra_args or {})
+  pcall(function() require('ue.clangd_index').ue_starting() end) -- fewer clangd threads while it runs
   local ok, obj = pcall(vim.system, cmd, { cwd = cfg.cwd, detach = true, stdout = false, stderr = false })
   if not ok then return notify('Failed to start: ' .. tostring(obj), vim.log.levels.ERROR) end
   running = obj
