@@ -136,9 +136,21 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 3. UNL server loads and scans project structure (statusline `UE ⠋ indexing N%`)
 4. clangd will begin background indexing (first run: hours, subsequent: fast)
 
+## Hot reload (`lua/core/reload.lua`)
+
+Edits to the live config apply to the running Neovim; no restart. The config folder is watched (libuv `fs_event`, recursive), and changes are applied 300 ms after the last one, so a `git pull` is one reload with one notice listing what was applied. `:ConfigReload` reloads everything by hand.
+- `lua/core/*`, `lua/ue/*`: the module is re-required and patched into the already-loaded table, so `local x = require(...)` references get the new functions. A file that fails to load keeps the old module and reports the error.
+- After a module reload, its `M.on_reload()` runs, or else its `M.setup()`. Setups must be idempotent: augroups with `clear = true`, named dap listeners.
+- Module-local variables start fresh on reload. Keep runtime state that must survive in `M.state`; for example, `debug_ui` keeps "stopped on an ensure" there.
+- `core.options` / `core.keymaps` / `core.autocmds` run again.
+- `lua/plugins/*.lua`: lazy.nvim re-reads the specs (its own `change_detection` is off: it re-read specs without re-applying them). The changed file's plugins get their keys re-mapped, stale keys are removed, and loaded plugins run `config` again. The dap plugins wait until the debug session ends. lazy copies a plugin's old state, including its cache of resolved keys/opts, onto the new spec; the reloader clears that cache.
+- `colors/<name>.lua` is re-applied when it is the current scheme.
+- `init.lua` and `core/lazy.lua` need a restart (the notice says so). Under `tools/`, dbgeng-dap applies to the next debug session; ue-lsp needs `:LspRestart ue_ls`.
+- LSP settings in `lsp.lua` reach running servers only after `:LspRestart`.
+
 ## Testing Changes
 
-Open Neovim after editing. Useful checks:
+Open Neovim after editing (or save: hot reload applies it). Useful checks:
 - `:Lazy` — plugin install status and errors
 - `:checkhealth` — LSP, treesitter, provider diagnostics
 - `:Lazy profile` — startup time (target < 50ms)
