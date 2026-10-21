@@ -1,9 +1,9 @@
 -- Debugger UI (nvim-dap-ui) set up to read like Rider's debug tool window:
 --   * plain Unicode icons and signs: the terminal font (Cascadia Mono) has no Nerd Font glyphs, and
 --     dap-ui's defaults are Nerd Font private-use characters that show as "?"
---   * every panel has a title bar with its keys (frames, breakpoints, variables, watches)
+--   * every panel has a title bar with its main keys; `?` in a panel lists all debugger keys
 --   * a click opens a frame or breakpoint (dap-ui's default is <CR> / double-click only)
---   * breakpoints are their own panel with a count and the exception settings
+--   * breakpoints are the top panel, with a count and the exception settings in its title
 --   * exception settings ("Suspend on ensure", C++ throw, access violation) are toggled with
 --     <leader>dx / <leader>dE and kept across sessions (stdpath('state')/dap-exceptions.json)
 local M = {}
@@ -85,17 +85,56 @@ local function filters_text()
   return table.concat(parts, '  ')
 end
 
+-- Short enough for a 60-column panel; %< drops the tail first when a panel is narrower.
 local TITLES = {
-  dapui_scopes = function() return '%#Title# Variables %*  ⏎/double-click expand · e edit value · r send to REPL' end,
-  dapui_stacks = function()
-    return '%#Title# Call stack %*  click/⏎ go to frame · t library frames · <leader>dk/dj frame up/down · <leader>dT threads'
-  end,
   dapui_breakpoints = function()
-    return ('%%#Title# Breakpoints (%d) %%*  click/⏎ go to · t on/off · d delete · F9 toggle  │  %s  (<leader>dx)')
-      :format(count_breakpoints(), filters_text())
+    return ('%%#Title# Breakpoints (%d) %%*%%<  %s  · ? keys'):format(count_breakpoints(), filters_text())
   end,
-  dapui_watches = function() return '%#Title# Watches %*  type an expression + ⏎ to add · e edit · d delete' end,
+  dapui_scopes = function() return '%#Title# Variables %*%<  ⏎ expand · e edit · ? keys' end,
+  dapui_stacks = function() return '%#Title# Call stack %*%<  click/⏎ open frame · ? keys' end,
+  dapui_watches = function() return '%#Title# Watches %*%<  type + ⏎ to add · e edit · d delete · ? keys' end,
 }
+
+local HELP = {
+  'Debugger keys',
+  '',
+  '  F5           start (build + debug) / continue',
+  '  Shift+F5     stop',
+  '  F10          step over',
+  '  F11          step into',
+  '  Shift+F11    step out',
+  '  F9           toggle breakpoint     <leader>dB  conditional breakpoint',
+  '',
+  '  Call stack   click / Enter: go to frame   t: show/hide library frames',
+  '               <leader>dk / <leader>dj: frame up (caller) / down',
+  '  Threads      <leader>dT: all threads and their stacks',
+  '  Breakpoints  click / Enter: go to   t: enable/disable   d: delete',
+  '  Exceptions   <leader>dx: pick (ensure, C++ throw, access violation)',
+  '               <leader>dE: toggle Suspend on ensure',
+  '  Variables    Enter / double-click: expand   e: edit   r: send to REPL',
+  '  Evaluate     <leader>de: expression (also visual)   <leader>dh: value under cursor',
+  '  Panels       <leader>du: show/hide   <leader>dr: REPL',
+  '',
+  'q / Esc closes this window',
+}
+
+--- Floating list of the debugger keys (`?` in any debugger panel).
+function M.help()
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, HELP)
+  vim.bo[buf].modifiable = false
+  local width = 0
+  for _, l in ipairs(HELP) do width = math.max(width, vim.fn.strdisplaywidth(l)) end
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = 'editor', style = 'minimal', border = 'rounded', title = ' Debug ', title_pos = 'center',
+    width = width + 2, height = #HELP,
+    row = math.floor((vim.o.lines - #HELP) / 2), col = math.floor((vim.o.columns - width) / 2),
+  })
+  vim.api.nvim_buf_add_highlight(buf, -1, 'Title', 0, 0, -1)
+  for _, key in ipairs({ 'q', '<Esc>' }) do
+    vim.keymap.set('n', key, function() vim.api.nvim_win_close(win, true) end, { buffer = buf, nowait = true })
+  end
+end
 
 --- Winbar text for a dap-ui panel (evaluated on every redraw).
 function M.winbar(ft)
@@ -105,6 +144,9 @@ end
 
 local function set_winbars(buf)
   local ft = vim.bo[buf].filetype
+  if ft:match('^dapui_') or ft == 'dap-repl' then
+    vim.keymap.set('n', '?', M.help, { buffer = buf, desc = 'Debugger keys' })
+  end
   if not TITLES[ft] then return end
   for _, win in ipairs(vim.fn.win_findbuf(buf)) do
     vim.wo[win].winbar = ("%%{%%v:lua.require'core.debug_ui'.winbar('%s')%%}"):format(ft)
@@ -130,12 +172,12 @@ function M.dapui_opts()
     },
     layouts = {
       {
-        elements = { { id = 'scopes', size = 0.55 }, { id = 'stacks', size = 0.45 } },
+        elements = { { id = 'breakpoints', size = 0.2 }, { id = 'scopes', size = 0.45 }, { id = 'stacks', size = 0.35 } },
         size = 60,
         position = 'left',
       },
       {
-        elements = { { id = 'breakpoints', size = 0.3 }, { id = 'watches', size = 0.2 }, { id = 'repl', size = 0.5 } },
+        elements = { { id = 'watches', size = 0.3 }, { id = 'repl', size = 0.7 } },
         size = 12,
         position = 'bottom',
       },
