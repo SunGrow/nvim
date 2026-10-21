@@ -26,7 +26,7 @@ require('lazy').setup('plugins', {
     notify = false,
   },
   change_detection = {
-    notify = false,
+    enabled = false, -- core.reload re-reads the specs and also re-applies keys and configs
   },
   rocks = {
     enabled = false,

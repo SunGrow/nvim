@@ -270,6 +270,16 @@ function M.dapui_opts()
   }
 end
 
+--- Config hot reload (core.reload): signs, listeners and toolbar again; dap-ui's panel options
+--- (layouts, keys, icons) too when no debug session runs.
+function M.on_reload()
+  M.setup()
+  local dap = package.loaded['dap']
+  if package.loaded['dapui'] and not (dap and dap.session()) then
+    require('dapui').setup(M.dapui_opts())
+  end
+end
+
 --- Resets the open dap-ui layouts to their configured proportions (after a terminal resize).
 function M.relayout()
   local ok, windows = pcall(require, 'dapui.windows')

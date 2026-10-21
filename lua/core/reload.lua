@@ -1,0 +1,245 @@
+-- Config hot reload: saving (or syncing) a file of this config applies it to the running Neovim.
+--
+-- The config folder is watched (libuv fs_event, recursive); changes are applied 300 ms after the
+-- last one, so a git pull of many files is one reload:
+--   * lua/core/*, lua/ue/* modules: re-required and patched into the table already loaded, so code
+--     holding a reference (`local cdb = require('ue.compiledb')`) gets the new functions. Then the
+--     module's `on_reload(old)` runs if it has one, else its `setup()` (all setups here are
+--     idempotent: augroups with clear = true, named dap listeners).
+--   * core.options / core.keymaps / core.autocmds: run again.
+--   * lua/plugins/*.lua: lazy.nvim re-reads the specs; for each plugin of the changed file its keys
+--     are re-mapped (stale ones removed) and, if it is loaded, its `config` runs again. Not while a
+--     debug session runs for the dap plugins (applied after it ends).
+--   * colors/<name>.lua: re-applied when it is the current color scheme.
+--   * init.lua, core/lazy.lua: need a restart (said so). tools/*: the debug adapter is started per
+--     session (next session uses it); ue-lsp needs :LspRestart ue_ls.
+-- :ConfigReload reloads every loaded config module and every plugin spec by hand.
+local M = {}
+
+local root = vim.fs.normalize(vim.fn.stdpath('config'))
+local RESTART = { ['init.lua'] = true, ['lua/core/lazy.lua'] = true }
+local RERUN = { ['core.options'] = true, ['core.keymaps'] = true, ['core.autocmds'] = true }
+local DAP_PLUGINS = { ['nvim-dap'] = true, ['nvim-dap-ui'] = true, ['nvim-dap-virtual-text'] = true, ['UDB.nvim'] = true }
+
+local function notify(msg, level)
+  vim.notify(msg, level or vim.log.levels.INFO, { title = 'Config reload' })
+end
+
+local function modname(rel)
+  local m = rel:match('^lua/(.+)%.lua$')
+  return m and (m:gsub('/', '.'):gsub('%.init$', ''))
+end
+
+--- Re-requires a loaded module and patches the old table in place. Returns ok, message.
+function M.reload_module(mod)
+  local old = package.loaded[mod]
+  if old == nil then return true, nil end -- not loaded: the next require reads the new file
+  package.loaded[mod] = nil
+  local ok, new = pcall(require, mod)
+  if not ok then
+    package.loaded[mod] = old
+    return false, mod .. ': ' .. tostring(new)
+  end
+  if RERUN[mod] then return true, mod .. ' (re-run)' end
+  if type(old) == 'table' and type(new) == 'table' and old ~= new then
+    for k in pairs(old) do
+      if new[k] == nil then old[k] = nil end
+    end
+    for k, v in pairs(new) do old[k] = v end
+    package.loaded[mod] = old
+    new = old
+  end
+  local hook = type(new) == 'table' and (new.on_reload or new.setup)
+  if hook then
+    local hok, err = pcall(hook)
+    if not hok then return false, mod .. ' reloaded, but ' .. (new.on_reload and 'on_reload' or 'setup') .. ' failed: ' .. tostring(err) end
+    return true, mod .. (new.on_reload and ' (on_reload)' or ' (setup)')
+  end
+  return true, mod
+end
+
+local deferred -- spec modules whose dap plugin configs wait for the end of the debug session
+
+--- Re-reads lazy.nvim's specs and re-applies the plugins defined in the given spec modules
+--- (all plugins when `mods` is nil). Returns the list of messages and whether one failed.
+function M.reload_specs(mods)
+  local Config = require('lazy.core.config')
+  local Plugin = require('lazy.core.plugin')
+  local Handler = require('lazy.core.handler')
+  local Loader = require('lazy.core.loader')
+  local Fragments = require('lazy.core.fragments')
+  local Keys = require('lazy.core.handler.keys')
+
+  -- old key mappings per plugin, to remove the ones a spec no longer has
+  local old_keys = {}
+  for name, p in pairs(Config.plugins) do
+    old_keys[name] = p._.handlers and p._.handlers.keys or {}
+  end
+
+  -- which plugins each spec module defines (lazy does not record it)
+  local defined = {}
+  local add = Fragments.add
+  Fragments.add = function(self, spec)
+    local frag = add(self, spec)
+    local importing = self.spec and self.spec.importing
+    if frag and frag.name and importing and (not mods or mods[importing]) then defined[frag.name] = true end
+    return frag
+  end
+  local ok, err = pcall(Plugin.load)
+  Fragments.add = add
+  if not ok then return { 'lazy spec reload failed: ' .. tostring(err) }, true end
+
+  local msgs, failed = {}, false
+  local in_session = package.loaded['dap'] and require('dap').session() ~= nil
+  for name in pairs(defined) do
+    local p = Config.plugins[name]
+    if p then
+      -- keys: drop the old lazy-loading stubs / mappings and add the new ones
+      Handler.disable(p)
+      p._.handlers = nil
+      Handler.resolve(p)
+      local new_keys = p._.handlers.keys or {}
+      for id, k in pairs(old_keys[name] or {}) do
+        if not new_keys[id] then pcall(vim.keymap.del, k.mode, k.lhs) end
+      end
+      if p._.loaded then
+        for _, k in pairs(new_keys) do
+          if k.rhs then
+            local opts = Keys.opts(k)
+            vim.keymap.set(k.mode, k.lhs, k.rhs, opts)
+          end
+        end
+        if (p.config or p.opts) and not (in_session and DAP_PLUGINS[name]) then
+          local cok, cerr = pcall(Loader.config, p)
+          if cok then
+            msgs[#msgs + 1] = name .. ' (keys, config)'
+          else
+            failed = true
+            msgs[#msgs + 1] = name .. ': config failed: ' .. tostring(cerr)
+          end
+        elseif in_session and DAP_PLUGINS[name] then
+          M.after_session(mods)
+          msgs[#msgs + 1] = name .. ' (keys; config after the debug session)'
+        else
+          msgs[#msgs + 1] = name .. ' (keys)'
+        end
+      else
+        Handler.enable(p)
+        msgs[#msgs + 1] = name .. ' (not loaded yet: new spec on load)'
+      end
+    end
+  end
+  return msgs, failed
+end
+
+--- Re-applies the deferred spec modules once the debug session ends.
+function M.after_session(mods)
+  deferred = vim.tbl_extend('force', deferred or {}, mods or {})
+  local dap = require('dap')
+  dap.listeners.after.event_terminated['core-reload'] = function()
+    local todo = deferred
+    deferred = nil
+    dap.listeners.after.event_terminated['core-reload'] = nil
+    vim.schedule(function()
+      local msgs = M.reload_specs(todo)
+      notify('Applied after the debug session:\n  ' .. table.concat(msgs, '\n  '))
+    end)
+  end
+end
+
+--- Applies a set of changed files (paths relative to the config folder, forward slashes).
+function M.apply(files)
+  local msgs, failed, specs, later = {}, false, nil, {}
+  local function add(ok, msg)
+    if msg then msgs[#msgs + 1] = (ok and '✓ ' or '✗ ') .. msg end
+    if not ok then failed = true end
+  end
+  local sorted = vim.tbl_keys(files)
+  table.sort(sorted)
+  for _, rel in ipairs(sorted) do
+    local mod = modname(rel)
+    if RESTART[rel] then
+      later[#later + 1] = rel .. ': restart Neovim to apply'
+    elseif mod and mod:match('^plugins%.') then
+      specs = specs or {}
+      specs[mod] = true
+    elseif mod then
+      add(M.reload_module(mod))
+    elseif rel:match('^colors/.+%.lua$') then
+      local scheme = vim.fn.fnamemodify(rel, ':t:r')
+      if vim.g.colors_name == scheme then add(pcall(vim.cmd.colorscheme, scheme) and true, 'colorscheme ' .. scheme) end
+    elseif rel:match('^tools/dbgeng%-dap/') then
+      later[#later + 1] = 'dbgeng-dap: used from the next debug session'
+    elseif rel:match('^tools/ue%-lsp/') then
+      later[#later + 1] = 'ue-lsp: :LspRestart ue_ls to apply'
+    end
+    if rel == 'lua/plugins/lsp.lua' then
+      later[#later + 1] = 'LSP settings: running servers keep the old ones until :LspRestart'
+    end
+  end
+  if specs then
+    local spec_msgs, spec_failed = M.reload_specs(specs)
+    for _, m in ipairs(spec_msgs) do add(not spec_failed or not m:find('failed'), m) end
+  end
+  if #msgs == 0 and #later == 0 then return end
+  vim.list_extend(msgs, later)
+  notify('Reloaded:\n' .. table.concat(vim.tbl_map(function(m) return '  ' .. m end, msgs), '\n'),
+    failed and vim.log.levels.ERROR or vim.log.levels.INFO)
+end
+
+--- :ConfigReload — every loaded config module and every plugin spec.
+function M.reload_all()
+  local files = {}
+  for mod in pairs(package.loaded) do
+    if mod:match('^core%.') or mod:match('^ue%.') then
+      local rel = 'lua/' .. mod:gsub('%.', '/') .. '.lua'
+      if mod ~= 'core.lazy' and mod ~= 'core.reload' and vim.uv.fs_stat(root .. '/' .. rel) then files[rel] = true end
+    end
+  end
+  for name in vim.fs.dir(root .. '/lua/plugins') do
+    if name:match('%.lua$') then files['lua/plugins/' .. name] = true end
+  end
+  if vim.g.colors_name and vim.uv.fs_stat(root .. '/colors/' .. vim.g.colors_name .. '.lua') then
+    files['colors/' .. vim.g.colors_name .. '.lua'] = true
+  end
+  M.apply(files)
+end
+
+-- watcher -----------------------------------------------------------------------------------------
+local pending = {}
+
+local function on_change(err, filename)
+  if err or not filename then return end
+  local rel = filename:gsub('\\', '/')
+  if rel:match('^%.git/') or rel:match('/%.git/') then return end
+  if not (rel:match('%.lua$') or rel:match('^tools/.+%.py$') or rel:match('^tools/.+%.js$')) then return end
+  pending[rel] = true
+  M._timer:stop()
+  M._timer:start(300, 0, vim.schedule_wrap(function()
+    local files = pending
+    pending = {}
+    -- skip files that did not really change (editors and git touch files without changing them)
+    for rel2 in pairs(files) do
+      local st = vim.uv.fs_stat(root .. '/' .. rel2)
+      local key = st and (st.size .. ':' .. st.mtime.sec .. ':' .. st.mtime.nsec)
+      if st and M._seen[rel2] == key then files[rel2] = nil else M._seen[rel2] = key end
+    end
+    if next(files) then M.apply(files) end
+  end))
+end
+
+function M.setup()
+  if #vim.api.nvim_list_uis() == 0 and not vim.g.config_reload_headless then return end -- not in scripts
+  if M._watch then M._watch:stop() end
+  M._seen = M._seen or {}
+  M._timer = M._timer or vim.uv.new_timer()
+  M._watch = vim.uv.new_fs_event()
+  local ok, err = M._watch:start(root, { recursive = true }, on_change)
+  if not ok then notify('cannot watch ' .. root .. ': ' .. tostring(err), vim.log.levels.WARN) end
+  vim.api.nvim_create_user_command('ConfigReload', function() M.reload_all() end,
+    { desc = 'Reload this Neovim config (modules, plugin specs, color scheme)' })
+end
+
+M.on_reload = M.setup
+
+return M
