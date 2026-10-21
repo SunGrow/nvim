@@ -4,8 +4,9 @@
 --   * every panel has a title bar with its main keys; `?` in a panel lists all debugger keys
 --   * a click opens a frame or breakpoint (dap-ui's default is <CR> / double-click only)
 --   * breakpoints are the top panel, with a count and the exception settings in its title
---   * exception settings ("Suspend on ensure", C++ throw, access violation) are toggled with
---     <leader>dx / <leader>dE and kept across sessions (stdpath('state')/dap-exceptions.json)
+--   * exception settings ("Suspend on ensure", C++ throw, access violation) are checkboxes in the
+--     toolbar (click) and in the Breakpoints title, toggled with <leader>dx / <leader>dE too, and kept
+--     across sessions (stdpath('state')/dap-exceptions.json)
 local M = {}
 
 -- dbgeng-dap's exceptionBreakpointFilters (tools/dbgeng-dap/dbgeng_dap/adapter.py EXC_FILTERS)
@@ -41,13 +42,21 @@ local function filter_list()
   return list
 end
 
+--- Repaints the toolbar and the panel title bars now (they show the exception settings).
+local function repaint()
+  local ok, controls = pcall(require, 'dapui.controls')
+  if ok then controls.refresh_control_panel() end
+  vim.cmd.redrawstatus({ bang = true })
+  pcall(vim.api.nvim__redraw, { winbar = true, flush = true })
+end
+
 --- Applies the settings to new sessions and to the running one.
 local function apply()
   local dap = require('dap')
   dap.defaults.dbgeng.exception_breakpoints = filter_list()
   if dap.session() then dap.set_exception_breakpoints(filter_list()) end
   pcall(vim.fn.writefile, { vim.json.encode(load()) }, state_file)
-  vim.cmd.redrawstatus({ bang = true })
+  repaint()
 end
 
 function M.toggle_filter(id)
@@ -193,6 +202,33 @@ function M.dapui_opts()
   }
 end
 
+-- toolbar -----------------------------------------------------------------------------------------
+-- dap-ui's controls (▶ ↓ ↷ ↑ ...) get the exception settings as clickable checkboxes, like Rider's
+-- "Suspend on ensure" toggle next to its debugger buttons.
+_G._debug_ui = {}
+for _, f in ipairs(M.FILTERS) do
+  _G._debug_ui[f.id] = function() M.toggle_filter(f.id) end
+end
+
+function M.toolbar_checkboxes()
+  local parts = {}
+  for _, f in ipairs(M.FILTERS) do
+    local on = load()[f.id]
+    parts[#parts + 1] = ('%%#%s#%%0@v:lua._debug_ui.%s@%s %s%%X%%*'):format(
+      on and 'DapUIDebugOnBox' or 'DapUIDebugOffBox', f.id, on and '[x]' or '[ ]',
+      f.id == 'ensure' and 'Suspend on ensure' or f.short)
+  end
+  return '   │  ' .. table.concat(parts, '   ') .. '   │  ? keys'
+end
+
+local function hook_controls()
+  local ok, controls = pcall(require, 'dapui.controls')
+  if not ok or controls._debug_ui_hooked then return end
+  controls._debug_ui_hooked = true
+  local orig = controls.controls
+  controls.controls = function(is_active) return orig(is_active) .. M.toolbar_checkboxes() end
+end
+
 -- signs and title-bar autocmds -------------------------------------------------------------------
 function M.setup()
   local function hl_defaults()
@@ -203,6 +239,8 @@ function M.setup()
     vim.api.nvim_set_hl(0, 'DapLogPoint', { default = true, link = 'DiagnosticInfo' })
     vim.api.nvim_set_hl(0, 'DapStopped', { default = true, link = 'DiagnosticWarn' })
     vim.api.nvim_set_hl(0, 'DapStoppedLine', { default = true, link = 'Visual' })
+    vim.api.nvim_set_hl(0, 'DapUIDebugOnBox', { default = true, link = 'DiagnosticOk' })
+    vim.api.nvim_set_hl(0, 'DapUIDebugOffBox', { default = true, link = 'Comment' })
   end
   hl_defaults()
   local signs = {
@@ -222,6 +260,7 @@ function M.setup()
   })
 
   require('dap').defaults.dbgeng.exception_breakpoints = filter_list()
+  hook_controls()
 end
 
 return M
