@@ -27,6 +27,20 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
 - LSP capabilities come from `require('blink.cmp').get_lsp_capabilities()` and must be passed to `vim.lsp.config()`
 - Neovim 0.11 built-in keymaps (grn, gra, grr, gri, grt, gO, K, `<C-s>`, [d, ]d, gcc, gc) are intentionally NOT overridden — the config only adds `gd`, `gD`, `<leader>ld`, `<leader>li`, `<M-o>` (switch header/source), `<M-]>` (references)
 - LSP progress uses fidget.nvim (top-right spinner), NOT lualine — fidget consumes the progress ring buffer so `vim.lsp.status()` returns empty when active
+- `lua/core/clangd.lua`:
+  - The statusline shows clangd's per-file parse state for the current buffer (`⠋ clangd building preamble`), from the `textDocument/clangd.fileStatus` extension (`init_options.clangdFileStatus`). Without a preamble clangd has no AST: no semantic colors or navigation from that file.
+  - In UE projects, once a file is parsed, its header/source counterpart (`switchSourceHeader`) is opened in clangd without a buffer, at most 3 at a time. A UE preamble holds the module's shared PCH engine headers: 270-300 MB, 20-50 s to build per file. With the prewarm, `gd` from a declaration lands on a parsed `.cpp`: semantic colors 6.7 s after the jump instead of 50 s.
+  - The prewarm text matches Neovim's (LF line endings, no BOM), so clangd reuses the preamble when Neovim opens the file.
+- Debugger UI (`lua/core/debug_ui.lua`, nvim-dap-ui options):
+  - Icons and signs are plain Unicode. The terminal font (Cascadia Mono) has no Nerd Font glyphs, and dap-ui's default icons showed as `?`.
+  - Every panel has a title with its main keys. Breakpoints is the top panel, and its title holds the count and the exception settings (`ensure ✓  C++ throw ✗  AV ✓`). `?` in any panel lists all debugger keys.
+  - A click opens a frame or breakpoint (`<LeftRelease>` element mapping).
+  - `<leader>dk`/`<leader>dj` move a frame up/down, `<leader>dT` lists the threads, `<leader>dx` picks exception settings and `<leader>dE` toggles "Suspend on ensure".
+  - The settings persist in `stdpath('state')/dap-exceptions.json` and reach new sessions through `dap.defaults.dbgeng.exception_breakpoints`.
+- dbgeng-dap exception filter `ensure` (on by default, like Rider's "Suspend on ensure"):
+  - A failed `ensure()` breaks in UE's ensure lambda, whose static locals are `ENSURE_Static`/`ENSURE_bExecuted` (`AssertionMacros.h` `UE_ENSURE_IMPL2`).
+  - With the filter off, the adapter writes `ensure() failed at File.cpp:N` to the console and continues. With it on, the stop reads "ensure() failed".
+  - Frames show the function name (with source) or a short module name (`CoreUObject!UFunction::Invoke`).
 
 ## Conventions
 

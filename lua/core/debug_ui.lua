@@ -92,7 +92,7 @@ local TITLES = {
   end,
   dapui_scopes = function() return '%#Title# Variables %*%<  ⏎ expand · e edit · ? keys' end,
   dapui_stacks = function() return '%#Title# Call stack %*%<  click/⏎ open frame · ? keys' end,
-  dapui_watches = function() return '%#Title# Watches %*%<  type + ⏎ to add · e edit · d delete · ? keys' end,
+  dapui_watches = function() return '%#Title# Watches %*%<  ⏎ add · e edit · d delete · ? keys' end,
 }
 
 local HELP = {
