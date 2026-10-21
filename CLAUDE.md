@@ -40,6 +40,12 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
   - The statusline shows clangd's per-file parse state for the current buffer (`⠋ clangd building preamble`), from the `textDocument/clangd.fileStatus` extension (`init_options.clangdFileStatus`). Without a preamble clangd has no AST: no semantic colors or navigation from that file.
   - In UE projects, once a file is parsed, its header/source counterpart (`switchSourceHeader`) is opened in clangd without a buffer, at most 3 at a time. A UE preamble holds the module's shared PCH engine headers: 270-300 MB, 20-50 s to build per file. With the prewarm, `gd` from a declaration lands on a parsed `.cpp`: semantic colors 6.7 s after the jump instead of 50 s.
   - The prewarm text matches Neovim's (LF line endings, no BOM), so clangd reuses the preamble when Neovim opens the file.
+- Discoverability: `F1` (and the clickable `⌨ F1 keys` in the statusline) opens `lua/core/keyhelp.lua`, one screen of the IDE keys grouped by task. It is made from the real mappings: keys not mapped in the current buffer (LSP keys outside a code file, git hunk keys outside a repo file) are dimmed. While debugging, the Debug section comes first. Its column layout packs sections by height; keep descriptions short (about 34 characters) so three columns fit at 180 columns.
+- Clicking the line-number/sign gutter of a C/C++ file toggles a breakpoint (`core/keymaps.lua` `<LeftMouse>`); a click in the text is the normal click.
+- Debugger toolbar: while a session runs, the tabline is the toolbar (`debug_ui.toolbar`): the state (`⏸ Paused at a breakpoint in add_points (demo.c:8)`, `▶ Running`), then named, clickable buttons with their keys, only those usable now, then the exception checkboxes when there is room. It shrinks to fit: location first, then long names, then keys. dap-ui's own controls are off: bare icons, two of them (step back, disconnect) unsupported by dbgeng-dap.
+- Debugger keys (Rider's VS Code keymap): F5 start/continue, F6 pause, Shift+F5 stop, Ctrl+Shift+F5 restart (UE: builds again), F9 breakpoint, F10/F11/Shift+F11 steps, Ctrl+F10 run to cursor. `Space d` menu entries name their F-key; `Space dw` add to Watches, `Space dL` list / `Space dC` delete all breakpoints, `Space d?` all debugger keys. `debug_ui.M.KEYS` feeds the `?` list and F1; keep it in step with `lang-cpp.lua`.
+- Panel titles only offer what the adapter supports (`e edit` in Variables needs `supportsSetVariable`, which dbgeng-dap lacks). Watches: `i` starts typing an expression.
+- Tested with `dbgeng-dap` launching a small C program (no Unreal needed): a `launch` config with `program`.
 - Debugger UI (`lua/core/debug_ui.lua`, nvim-dap-ui options):
   - Icons and signs are plain Unicode. The terminal font (Cascadia Mono) has no Nerd Font glyphs, and dap-ui's default icons showed as `?`.
   - Every panel has a title with its main keys. Breakpoints is the top panel, and its title holds the count and the exception settings (`ensure ✓  C++ throw ✗  AV ✓`). `?` in any panel lists all debugger keys.
@@ -161,7 +167,7 @@ Edits to the live config apply to the running Neovim; no restart. The config fol
 - `core.options` / `core.keymaps` / `core.autocmds` run again.
 - `lua/plugins/*.lua`: lazy.nvim re-reads the specs (its own `change_detection` is off: it re-read specs without re-applying them). The changed file's plugins get their keys re-mapped, stale keys are removed, and loaded plugins run `config` again. The dap plugins wait until the debug session ends. lazy copies a plugin's old state, including its cache of resolved keys/opts, onto the new spec; the reloader clears that cache.
 - `colors/<name>.lua` is re-applied when it is the current scheme.
-- `init.lua` and `core/lazy.lua` need a restart (the notice says so). Under `tools/`, dbgeng-dap applies to the next debug session; ue-lsp needs `:LspRestart ue_ls`.
+- `init.lua` and `core/lazy.lua` need a restart (the notice says so). On Windows libuv also reports file reads; a file not seen before counts as changed only if written after the watcher started. Under `tools/`, dbgeng-dap applies to the next debug session; ue-lsp needs `:LspRestart ue_ls`.
 - LSP settings in `lsp.lua` reach running servers only after `:LspRestart`.
 
 ## Testing Changes
