@@ -21,6 +21,8 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
 - `lua/core/context.lua` detects project type once at startup (`.uproject` → UE) and caches the result — all files use `require('core.context')` instead of inline `vim.fs.find`
 - Context-aware keybindings (`<leader>ff`, `<leader>fg`, `<M-o>`) dispatch to UE-specific or generic backends based on `core.context.is_ue` — same muscle memory everywhere
   - `<leader>ff`/`<leader>fg` first ask UNL's index for components. On a project's first open, UNL builds the index for minutes (V2: 3.5 min), and UEP fails with "No components in DB" and an ENTER prompt. Until the index exists they use plain Telescope.
+- `<leader>?` (also `<leader>fk`) searches every key binding with its description (telescope keymaps). `?` inside a debugger panel shows the debugger keys.
+- Terminal resize / font zoom (`core/autocmds.lua` VimResized): debounced 40 ms; every tab page is equalized without autocmds and the current one kept (`tabdo` left the last tab current). dap-ui panels are `winfixwidth/height`, so `wincmd =` forced a size change onto one panel (stack and REPL down to 2 rows, never back); their layouts are reset to their proportions instead (`debug_ui.relayout`; layout sizes are screen fractions: left 25 %, bottom 20 %).
 - Symbol finders (`lua/core/symbols.lua`, Rider's Go to Class / Symbol / File Member): `<leader>fc` class (UEP's class index in UE projects, clangd otherwise), `<leader>fs` function, `<leader>fS` any symbol (clangd `workspace/symbol` asked directly, live, from any buffer; empty for the first ~15 s while clangd loads its index), `<leader>fm` members of the current file. Telescope's own LSP pickers fail or mix in ue_ls when both servers attach to a buffer.
 - `<leader>b` (Build) and `<leader>c` (Code) groups hold generic actions; UE-specific actions (`<leader>U`) are reserved for things only UNL/UEP/UBT can do
 - LSP uses Neovim 0.11 native `vim.lsp.config()` + mason-lspconfig v2 `automatic_enable` — NOT the old `lspconfig.X.setup()` pattern
@@ -126,7 +128,7 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 
 **Prerequisites:** Rust/Cargo, fd, ripgrep
 
-**Per-project setup:** `.clangd` is auto-created in the UE project root on first open (with `-D__INTELLISENSE__`, suppressed diagnostics, disabled clang-tidy).
+**Per-project setup:** `.clangd` is auto-created in the UE project root on first open (with `-D__INTELLISENSE__`, suppressed diagnostics, disabled clang-tidy). A second section skips `Intermediate/` (UHT `.gen.cpp`) in the background index: with the shared PCH every indexed file is a full UnrealEd parse (~45 s CPU, about 10 files/min at `-j=8`), and those files only add `Z_Construct_*` noise to symbol search.
 
 **First-time UE project workflow:**
 1. Open Neovim in the UE project root (`.clangd` is auto-created)
