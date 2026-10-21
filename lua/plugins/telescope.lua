@@ -63,6 +63,11 @@ return {
     { '<leader>fs', function() require('core.symbols').functions() end, desc = 'Find function' },
     { '<leader>fS', function() require('core.symbols').all() end, desc = 'Find symbol (any kind)' },
     { '<leader>fm', function() require('core.symbols').members() end, desc = 'Find member in this file' },
+    -- Git (Rider's Commit / Log / Branches windows); the preview shows each commit's diff
+    { '<leader>gc', function() require('telescope.builtin').git_status() end, desc = 'Git: Changed files (Tab stages)' },
+    { '<leader>gl', function() require('telescope.builtin').git_commits() end, desc = 'Git: Log' },
+    { '<leader>gf', function() require('telescope.builtin').git_bcommits() end, desc = 'Git: History of this file' },
+    { '<leader>gB', function() require('telescope.builtin').git_branches() end, desc = 'Git: Branches (Enter checks out)' },
   },
   config = function()
     local telescope = require('telescope')

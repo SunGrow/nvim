@@ -286,6 +286,26 @@ return {
 
         map('gd', is_ue_project and ue_definition or vim.lsp.buf.definition, 'Go to definition')
 
+        -- Rider (VS Code keymap) keys; core.code asks clangd and opens a picker
+        local code = require('core.code')
+        map('<F12>', is_ue_project and ue_definition or vim.lsp.buf.definition, 'Go to definition')
+        map('<M-CR>', code.actions, 'Quick fix / code actions', { 'n', 'i', 'x' })
+        map('<C-.>', code.actions, 'Quick fix / code actions', { 'n', 'i', 'x' })
+        map('<leader>ca', code.actions, 'Quick fix / code actions', { 'n', 'x' })
+        map('<F2>', vim.lsp.buf.rename, 'Rename symbol')
+        map('<leader>cr', vim.lsp.buf.rename, 'Rename symbol')
+        map('<S-F12>', code.usages, 'Find usages')
+        map('<S-M-F12>', code.usages, 'Find usages')
+        map('<leader>cu', code.usages, 'Find usages')
+        map('<leader>fu', code.usages, 'Find usages')
+        map('<C-F12>', code.implementations, 'Go to implementation / overrides')
+        map('<leader>cm', code.implementations, 'Go to implementation / overrides')
+        map('<S-M-h>', function() code.calls('incoming') end, 'Callers (call hierarchy)')
+        map('<leader>ch', function() code.calls('incoming') end, 'Callers (call hierarchy)')
+        map('<leader>cH', function() code.calls('outgoing') end, 'Callees (call hierarchy)')
+        map('<leader>cb', function() code.types('supertypes') end, 'Base classes')
+        map('<leader>cd', function() code.types('subtypes') end, 'Derived classes')
+
         -- ue_ls code lens (Blueprint values on UPROPERTY lines in headers)
         local client = vim.lsp.get_client_by_id(event.data.client_id)
         if client and client.name == 'ue_ls' and vim.api.nvim_buf_get_name(event.buf):match('%.h$') then
@@ -304,6 +324,8 @@ return {
         -- clangd-specific: register ClangdSwitchSourceHeader command (used by <M-o>)
         if client and (client.name == 'clangd' or client.name == 'clangd_engine') then
           require('core.clangd').on_attach(client, event.buf) -- parse status, counterpart prewarming
+          code.attach_highlight(client, event.buf)
+          code.attach_hints(client, event.buf)
         end
         local clangd = vim.lsp.get_clients({ bufnr = event.buf, name = 'clangd' })[1]
         if clangd then

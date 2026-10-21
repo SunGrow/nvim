@@ -22,6 +22,8 @@ return {
       map('n', '<leader>gw', gs.toggle_word_diff, 'Toggle word diff')
       map('n', '<leader>gb', function() gs.blame_line({ full = true }) end, 'Blame line')
       map('n', '<leader>gd', gs.diffthis, 'Diff this')
+      map('n', '<leader>gL', gs.toggle_current_line_blame, 'Toggle inline blame')
+      map('n', '<leader>gq', function() gs.setqflist('all') end, 'All changes to quickfix')
     end,
   },
 }

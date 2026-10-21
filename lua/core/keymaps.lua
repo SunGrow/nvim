@@ -54,15 +54,17 @@ map('n', '<M-o>', function()
   end
 end, { desc = 'Switch header/source' })
 
--- Alt+] — references
--- LSP: vim.lsp.buf.references(), fallback: Telescope grep word
+-- Alt+] — Find Usages (Rider's VS Code keymap, as in the user's Rider)
+-- LSP: core.code.usages() (clangd picker), fallback: Telescope grep word
 map('n', '<M-]>', function()
   if ctx.has_lsp() then
-    vim.lsp.buf.references()
+    require('core.code').usages()
   else
     require('telescope.builtin').grep_string()
   end
-end, { desc = 'References' })
+end, { desc = 'Find usages' })
+
+map('n', '<leader>uh', function() require('core.code').toggle_hints() end, { desc = 'Toggle inline hints' })
 
 -- Built-in keymaps NOT overridden (Neovim 0.11 defaults):
 --
