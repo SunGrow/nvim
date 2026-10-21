@@ -52,6 +52,13 @@ return {
     { '<leader>fr', function() require('telescope.builtin').resume() end, desc = 'Resume last' },
     { '<leader>fo', function() require('telescope.builtin').oldfiles() end, desc = 'Recent files' },
     { '<leader>fw', function() require('telescope.builtin').grep_string() end, desc = 'Grep word' },
+    -- searchable list of every key binding and what it does (like Rider's Find Action)
+    { '<leader>?', function()
+        require('telescope.builtin').keymaps({ modes = { 'n', 'x', 'i' }, show_plug = false, prompt_title = 'Keys (type to search)' })
+      end, desc = 'Help: search all keys' },
+    { '<leader>fk', function()
+        require('telescope.builtin').keymaps({ modes = { 'n', 'x', 'i' }, show_plug = false })
+      end, desc = 'Find key binding' },
     { '<leader>fc', function() require('core.symbols').classes() end, desc = 'Find class' },
     { '<leader>fs', function() require('core.symbols').functions() end, desc = 'Find function' },
     { '<leader>fS', function() require('core.symbols').all() end, desc = 'Find symbol (any kind)' },

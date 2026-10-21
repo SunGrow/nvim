@@ -12,11 +12,27 @@ autocmd('TextYankPost', {
   end,
 })
 
--- Resize splits when window is resized
+-- Resize splits when the terminal is resized (also each step of a font zoom). Debounced: a zoom sends
+-- a burst of VimResized. `tabdo` would leave the last tab page current, so every tab page is
+-- equalized without autocmds and the current one restored. The debugger panels (dap-ui) are fixed
+-- size (winfixwidth/height), so `wincmd =` cannot share a size change between them and Neovim forces
+-- it onto one panel (stack 2 rows, REPL 2 rows, never growing back); their layouts are reset to the
+-- configured proportions instead (lua/core/debug_ui.lua).
+local resize_timer
 autocmd('VimResized', {
   group = augroup('resize-splits', { clear = true }),
   callback = function()
-    vim.cmd('tabdo wincmd =')
+    resize_timer = resize_timer or vim.uv.new_timer()
+    resize_timer:stop()
+    resize_timer:start(40, 0, vim.schedule_wrap(function()
+      local cur = vim.api.nvim_get_current_tabpage()
+      for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+        vim.cmd('noautocmd ' .. vim.api.nvim_tabpage_get_number(tab) .. 'tabnext')
+        vim.cmd('noautocmd wincmd =')
+      end
+      vim.cmd('noautocmd ' .. vim.api.nvim_tabpage_get_number(cur) .. 'tabnext')
+      if package.loaded['dapui'] then pcall(require('core.debug_ui').relayout) end
+    end))
   end,
 })
 

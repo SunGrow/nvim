@@ -246,15 +246,16 @@ function M.dapui_opts()
       stacks = { open = { '<CR>', '<LeftRelease>' }, expand = 'o', toggle = 't' },
       breakpoints = { open = { '<CR>', '<LeftRelease>' }, toggle = 't', remove = 'd' },
     },
+    -- sizes are screen fractions, so the panels keep their share when the terminal or font size changes
     layouts = {
       {
         elements = { { id = 'breakpoints', size = 0.2 }, { id = 'scopes', size = 0.45 }, { id = 'stacks', size = 0.35 } },
-        size = 60,
+        size = 0.25,
         position = 'left',
       },
       {
         elements = { { id = 'watches', size = 0.3 }, { id = 'repl', size = 0.7 } },
-        size = 12,
+        size = 0.2,
         position = 'bottom',
       },
     },
@@ -267,6 +268,15 @@ function M.dapui_opts()
       },
     },
   }
+end
+
+--- Resets the open dap-ui layouts to their configured proportions (after a terminal resize).
+function M.relayout()
+  local ok, windows = pcall(require, 'dapui.windows')
+  if not ok then return end
+  for _, layout in ipairs(windows.layouts or {}) do
+    if layout:is_open() then layout:resize({ reset = true }) end
+  end
 end
 
 -- toolbar -----------------------------------------------------------------------------------------
