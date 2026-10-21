@@ -50,6 +50,13 @@ return {
             cond = function() return ue_project_name ~= '' end,
           },
           {
+            -- UE index / server activity: "UE ⠋ indexing 42%", "UE ✓" when ready (lua/ue/status.lua)
+            function() return require('ue.status').text() end,
+            color = function() return require('ue.status').color() end,
+            cond = function() return ue_project_name ~= '' end,
+            on_click = function() vim.cmd('UNL status') end,
+          },
+          {
             -- selected run configuration, like Rider's toolbar dropdown; click to choose another
             function() return require('ue.run').status() end,
             icon = '▶',

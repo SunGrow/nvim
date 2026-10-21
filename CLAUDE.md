@@ -78,6 +78,9 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
   - `<leader>bc` (or a click on the `▶` statusline item) chooses the configuration. The choice is remembered per project in `stdpath('state')/ue-run/<project>.json`.
   - UBT's echo and notify logging are off. It logs every compiler warning at WARN, and each long echo raised a hit-enter prompt that stalled the build output and the launch after it. `ue.run` reports one line per build and opens `:UBT diagnostics` when a build fails. The full log is in `stdpath('cache')/UBT/`.
 - dbgeng-dap ends its process (TerminateProcess with code 0) right after its last message, `terminated` or the `disconnect` response. nvim-dap kills the adapter as soon as it reads that message, and the kill exits with code 1, which shows as "adapter exited with 1".
+- `lua/ue/status.lua` puts UNL's background work in the statusline: `UE ⠋ indexing 42%`, `UE ⠋ scanning`, `UE ✓` (ready) or `UE ✗` (server down). Clicking it runs `:UNL status`.
+  - Server state comes from `UNL.status`, which polls `simple_status` every 2 s.
+  - The percentage comes from UNL's refresh progress events through the global event hook (`UNL.status` already owns the `refresh` category hook).
 - `lua/ue/session.lua` restores the project's last files when Neovim starts in a UE project without file arguments (`stdpath('state')/sessions/<project>.vim`). Headless runs never save or restore.
 - UNL Telescope callback picker is monkey-patched in `lang-ue.lua` to fix prompt buffer crashes on dynamic selection
 - `UNL.db.get_file_symbols` is wrapped in `lang-ue.lua` to retry "Project not found"/ECONNREFUSED for up to 10 s. unl-server registers the project a few hundred ms after it starts, and UEA's first lens query used to lose that race: an error plus an ENTER prompt at startup.
