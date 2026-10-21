@@ -131,7 +131,15 @@ Create `lua/plugins/<name>.lua` returning a lazy.nvim spec. Use lazy-loading tri
 
 **Per-project setup:** `.clangd` is auto-created in the UE project root on first open (with `-D__INTELLISENSE__`, suppressed diagnostics, disabled clang-tidy). A second section skips `Intermediate/` (UHT `.gen.cpp`) in the background index: with the shared PCH every indexed file is a full UnrealEd parse (~45 s CPU, about 10 files/min at `-j=8`), and those files only add `Z_Construct_*` noise to symbol search.
 
-`.clangd` also removes `-resource-dir`: UBT's compile database points it at Visual Studio's clang 19 headers, and with those clangd 20's **background index** records every parameter whose type is a template with a default argument (`TArray`, `TMap`, `TSet`, `TSharedPtr`, `std::vector`) as `int`. The symbol IDs then differ from the editor's parse, so Find Usages, implementations and callers of such functions came back empty while the class finders worked. The editor's own parse was not affected. clangd never re-indexes for changed flags, so on startup an index without the marker `.cache/clangd/nvim-index-v2` is moved aside and deleted (before clangd starts; with clangd already running it asks for a restart). The rebuild runs at background priority (about 10 TUs/min at `-j=8`).
+`.clangd` also removes `-resource-dir`: UBT's compile database points it at Visual Studio's clang 19 headers, and with those clangd 20's **background index** records every parameter whose type is a template with a default argument (`TArray`, `TMap`, `TSet`, `TSharedPtr`, `std::vector`) as `int`. The symbol IDs then differ from the editor's parse, so Find Usages, implementations and callers of such functions came back empty while the class finders worked. The editor's own parse was not affected. clangd never re-indexes for changed flags, so on startup an index without the marker `.cache/clangd/nvim-index-v2` is moved aside and deleted (before clangd starts; with clangd already running it asks for a restart). While an index is incomplete (flag `.cache/clangd/nvim-index-rebuilding`, written when the index is reset or first built), `lua/ue/clangd_index.lua` picks clangd's threads:
+- **No Unreal process running** (any `UnrealEditor*` or a project target exe): 14 threads at normal priority.
+- **One running:** 4 threads at background priority. Each indexing thread peaks at about 1.7 GB, and 8 threads next to UnrealEditor DebugGame ran the 31 GB machine out of RAM.
+
+A 15 s `tasklist` poll, and `ue.run` just before it launches something, switch the mode by force-restarting clangd (a busy clangd takes 30 s+ to exit gracefully). The resulting "quit with exit code 1" warning is hidden.
+
+When clangd's `backgroundIndexProgress` ends and at least 98% of the compile-DB files outside `Intermediate/` have a shard, the flag is removed and clangd goes back to 8 background threads.
+
+Measured on 8 V2 files at `-j=8` with RAM free: normal priority 3.3 files/min, background 2.9; with RAM short, background dropped to 1.6.
 
 **First-time UE project workflow:**
 1. Open Neovim in the UE project root (`.clangd` is auto-created)
