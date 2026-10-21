@@ -52,6 +52,10 @@ return {
     { '<leader>fr', function() require('telescope.builtin').resume() end, desc = 'Resume last' },
     { '<leader>fo', function() require('telescope.builtin').oldfiles() end, desc = 'Recent files' },
     { '<leader>fw', function() require('telescope.builtin').grep_string() end, desc = 'Grep word' },
+    { '<leader>fc', function() require('core.symbols').classes() end, desc = 'Find class' },
+    { '<leader>fs', function() require('core.symbols').functions() end, desc = 'Find function' },
+    { '<leader>fS', function() require('core.symbols').all() end, desc = 'Find symbol (any kind)' },
+    { '<leader>fm', function() require('core.symbols').members() end, desc = 'Find member in this file' },
   },
   config = function()
     local telescope = require('telescope')
