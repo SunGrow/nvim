@@ -121,6 +121,9 @@ return {
       end
     end
     vim.lsp.config('clangd', clangd_conf)
+    -- mason-lspconfig's automatic_enable covers only servers Mason installed; on Linux (WSL) clangd
+    -- comes from the distribution (ensure_installed above)
+    if vim.fn.executable(clangd_bin) == 1 then vim.lsp.enable('clangd') end
 
     if is_ue_project then
       vim.lsp.config('clangd_engine', vim.tbl_extend('error', clangd_status, {

@@ -184,12 +184,12 @@ local TITLES = {
 }
 
 -- Every debugger key, in the order a newcomer needs them: the toolbar, `?` and F1 are made from this.
--- key: as shown; lhs: the mapping (checked by the F1 sheet); toolbar: button id when it has one.
+-- key: as shown; lhs: the mapping (checked by the F1 sheet); ue: Unreal projects only (dbgeng-dap).
 M.KEYS = {
   { key = 'F5', lhs = '<F5>', desc = 'Start debugging / continue' },
   { key = 'F6', lhs = '<F6>', desc = 'Pause' },
   { key = 'Shift+F5', lhs = '<S-F5>', desc = 'Stop' },
-  { key = 'Ctrl+Shift+F5', lhs = '<C-S-F5>', desc = 'Restart (builds again)' },
+  { key = 'Ctrl+Shift+F5', lhs = '<C-S-F5>', desc = 'Restart' },
   { key = 'F10', lhs = '<F10>', desc = 'Step over' },
   { key = 'F11', lhs = '<F11>', desc = 'Step into' },
   { key = 'Shift+F11', lhs = '<S-F11>', desc = 'Step out' },
@@ -200,8 +200,8 @@ M.KEYS = {
   { key = 'Space dB', lhs = '<leader>dB', desc = 'Breakpoint with a condition' },
   { key = 'Space dL', lhs = '<leader>dL', desc = 'List all breakpoints' },
   { key = 'Space dC', lhs = '<leader>dC', desc = 'Delete all breakpoints' },
-  { key = 'Space dx', lhs = '<leader>dx', desc = 'Stop on: ensure, C++ throw, AV' },
-  { key = 'Space dI', lhs = '<leader>dI', desc = 'Ignore this ensure from now on' },
+  { key = 'Space dx', lhs = '<leader>dx', desc = 'Stop on: ensure, C++ throw, AV', ue = true },
+  { key = 'Space dI', lhs = '<leader>dI', desc = 'Ignore this ensure from now on', ue = true },
   {},
   { key = 'Space dh', lhs = '<leader>dh', desc = 'Value under the cursor' },
   { key = 'Space de', lhs = '<leader>de', desc = 'Evaluate an expression' },
@@ -223,8 +223,9 @@ local PANEL_HELP = {
 --- Lines for the debugger key list (`?` in the panels, <leader>d?, and the F1 sheet).
 function M.help_lines()
   local lines = {}
+  local ue = require('core.context').is_ue
   for _, k in ipairs(M.KEYS) do
-    lines[#lines + 1] = k.key and ('  %-15s %s'):format(k.key, k.desc) or ''
+    if not k.ue or ue then lines[#lines + 1] = k.key and ('  %-15s %s'):format(k.key, k.desc) or '' end
   end
   lines[#lines + 1] = ''
   vim.list_extend(lines, PANEL_HELP)

@@ -83,7 +83,7 @@ end
 local function debug_entries()
   local list = {}
   for _, k in ipairs(require('core.debug_ui').KEYS) do
-    if k.key then list[#list + 1] = { k.key, k.lhs, k.desc } end
+    if k.key and (not k.ue or require('core.context').is_ue) then list[#list + 1] = { k.key, k.lhs, k.desc } end
   end
   return list
 end
