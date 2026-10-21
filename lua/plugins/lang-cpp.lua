@@ -7,7 +7,8 @@ return {
       {
         'rcarriga/nvim-dap-ui',
         dependencies = { 'nvim-neotest/nvim-nio' },
-        opts = {},
+        -- Unicode icons, titled panels with key hints, click to open (lua/core/debug_ui.lua)
+        opts = function() return require('core.debug_ui').dapui_opts() end,
       },
       {
         -- variable values as end-of-line virtual text while stopped (works with any adapter: codelldb, dbgeng)
@@ -34,6 +35,7 @@ return {
     config = function()
       local dap = require('dap')
       local dapui = require('dapui')
+      require('core.debug_ui').setup() -- signs, panel title bars, exception settings
 
       -- In UE projects, UDB.nvim handles DAP adapter + launch configurations
       -- with auto-discovered engine binaries. Skip generic setup.
@@ -115,6 +117,14 @@ return {
       { '<leader>du', function() require('dapui').toggle() end, desc = 'Toggle DAP UI' },
       { '<leader>de', function() require('dapui').eval() end, desc = 'Eval expression', mode = { 'n', 'v' } },
       { '<leader>dh', function() require('dap.ui.widgets').hover() end, desc = 'Hover value under cursor', mode = { 'n', 'v' } },
+      { '<leader>dk', function() require('dap').up() end, desc = 'Frame up (caller)' },
+      { '<leader>dj', function() require('dap').down() end, desc = 'Frame down (callee)' },
+      { '<leader>dT', function()
+        local w = require('dap.ui.widgets')
+        w.centered_float(w.threads)
+      end, desc = 'Threads (all suspended threads and their stacks)' },
+      { '<leader>dx', function() require('core.debug_ui').pick_filters() end, desc = 'Exception breakpoints (ensure, C++ throw, AV)' },
+      { '<leader>dE', function() require('core.debug_ui').toggle_filter('ensure') end, desc = 'Toggle suspend on ensure' },
       -- UE projects: with no session, F5 builds and debugs the selected run configuration (lua/ue/run.lua)
       { '<F5>', function()
         local dap = require('dap')

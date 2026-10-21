@@ -24,14 +24,22 @@ CDB_LINE_RE = re.compile(r'^(\([0-9a-f]+\.[0-9a-f]+\): |\*\*\*|ModLoad:|Breakpoi
                          r'This exception may|[0-9a-f]{8}`[0-9a-f]{8} |[A-Za-z0-9_]+!\S+:$)')
 
 EXC_FILTERS = [
+    {'filter': 'ensure', 'label': 'Suspend on ensure', 'default': True,
+     'description': 'Stop when an ensure() fails (UE breaks in the ensure lambda); off: report it and continue'},
     {'filter': 'cpp_throw', 'label': 'C++ throw (first chance)', 'default': False,
      'description': 'Stop when a C++ exception is thrown (sxe eh)'},
     {'filter': 'av', 'label': 'Access violation (first chance)', 'default': True,
      'description': 'Stop on first-chance access violations (sxe av); second chance always stops'},
 ]
-EXC_NAMES = {0x80000003: 'Break instruction (__debugbreak / ensure / check)', 0xc0000005: 'Access violation',
+EXC_NAMES = {0x80000003: 'Break instruction (__debugbreak / check)', 0xc0000005: 'Access violation',
              0xe06d7363: 'C++ exception', 0xc0000094: 'Integer divide by zero', 0xc00000fd: 'Stack overflow',
              0xc0000409: 'Stack buffer overrun / fast fail'}
+
+
+def short_module(module):
+    """UnrealEditor_CoreUObject_Win64_DebugGame -> CoreUObject (UE module DLL names in cdb)."""
+    m = re.sub(r'^UnrealEditor[-_]', '', module)
+    return re.sub(r'[-_]Win64[-_](DebugGame|Development|Debug|Shipping|Test)$', '', m) or module
 
 
 class Bp:
@@ -103,6 +111,7 @@ class Session:
         self.next_frame, self.next_ref = 1, 1
         self.scope_cache, self.stack_cache, self.threads_cache = {}, {}, []
         self.pause_requested = False
+        self.exc_filters = {f['filter'] for f in EXC_FILTERS if f['default']}
         self.stray_breakins = 0      # DebugBreakProcess break-ins overtaken by a real event
         self.internal = None         # dict while an internal break-in is pending
         self.terminating = False
@@ -420,6 +429,15 @@ class Session:
             return
         if self.pause_requested and not breakin:
             self.stray_breakins += 1
+        ensure = (ev['kind'] == 'exception' and ev.get('code') == 0x80000003 and not breakin
+                  and not self.pause_requested and self._is_ensure())
+        if ensure and 'ensure' not in self.exc_filters:
+            top = P.parse_stack(self.x('kn 1'))
+            where = (f'{os.path.basename(top[0]["file"])}:{top[0]["line"]}'
+                     if top and top[0]['file'] else (top[0]['symbol'] if top else '?'))
+            self.console(f'ensure() failed at {where} (not suspended: "Suspend on ensure" is off)')
+            self._resume('gh')
+            return
         if ev['kind'] == 'breakpoint':
             bp = self.cdb_owner.get(ev['bp'])
             if bp is not None:
@@ -440,6 +458,8 @@ class Session:
             main = th[0]['tid'] if th else tid
             self._thread(main)
             body['threadId'] = main
+        elif ensure:
+            body.update(reason='exception', description='ensure() failed', text=ev['desc'])
         elif ev['kind'] == 'exception':
             name = EXC_NAMES.get(ev['code'], f'Exception 0x{ev["code"]:08x}')
             chance = 'first chance' if ev.get('first_chance') else 'second chance'
@@ -450,6 +470,15 @@ class Session:
             body.update(reason='pause', description=ev['desc'])
         self.pause_requested = False
         self.s.event('stopped', body)
+
+    def _is_ensure(self):
+        """The break instruction is the PLATFORM_BREAK in UE's ensure lambda (UE_ENSURE_IMPL2 in
+        AssertionMacros.h), whose static locals are ENSURE_Static / ENSURE_bExecuted."""
+        try:
+            loc = self._dx('@$curframe.LocalVariables')
+        except CdbError:
+            return False
+        return not loc.error and any(k.name == 'ENSURE_Static' for k in loc.children)
 
     def _is_breakin_thread(self, tid):
         st = P.parse_stack(self.x(f'~~[0x{tid:x}]kn 3'))
@@ -717,6 +746,7 @@ class Session:
 
     def req_setExceptionBreakpoints(self, a):
         on = set(a.get('filters') or [])
+        self.exc_filters = on
 
         def apply():
             self.x('sxe eh' if 'cpp_throw' in on else 'sxd eh')
@@ -787,8 +817,11 @@ class Session:
             fid = self.next_frame
             self.next_frame += 1
             self.frames[fid] = (tid, f['index'])
-            d = {'id': fid, 'name': f['symbol'], 'line': f['line'] or 0, 'column': 1 if f['line'] else 0}
             src = self.map_source(f['file'])
+            # with a source file the function says it all; without, keep a short module name
+            name = re.sub(r'\+0x[0-9a-f]+$', '', f['function']) if f['file'] else (
+                f'{short_module(f["module"])}!{f["function"]}' if f['module'] else f['symbol'])
+            d = {'id': fid, 'name': name, 'line': f['line'] or 0, 'column': 1 if f['line'] else 0}
             if src:
                 d['source'] = {'name': os.path.basename(src), 'path': src}
             elif f['file']:

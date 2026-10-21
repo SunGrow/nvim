@@ -110,7 +110,8 @@ end
 function M.text()
   local st = status[vim.uri_from_bufnr(0)]
   if not st or st == 'idle' then return '' end
-  return SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1] .. ' ' .. st
+  -- clangd reports e.g. "parsing includes, running Update": the first phase is enough
+  return SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1] .. ' clangd ' .. (st:match('^[^,]+') or st)
 end
 
 --- For tests and :lua inspection.
