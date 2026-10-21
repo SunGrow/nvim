@@ -68,9 +68,32 @@ function M.classes()
   end))
 end
 
---- Members of the current file (Rider's Go to File Member).
+--- Members of the current file (Rider's Go to File Member). Asks clangd only: telescope's
+--- lsp_document_symbols fails when ue_ls is attached to the same buffer.
 function M.members()
-  require('telescope.builtin').lsp_document_symbols({ symbol_width = 60 })
+  local buf = vim.api.nvim_get_current_buf()
+  local client = vim.lsp.get_clients({ bufnr = buf, name = 'clangd' })[1]
+    or vim.lsp.get_clients({ bufnr = buf, method = 'textDocument/documentSymbol' })[1]
+  if not client then
+    return vim.notify('No language server with symbols for this file', vim.log.levels.WARN, { title = 'Find member' })
+  end
+  client:request('textDocument/documentSymbol', { textDocument = vim.lsp.util.make_text_document_params(buf) },
+    function(err, res)
+      if err or not res or #res == 0 then
+        return vim.notify('No symbols in this file (yet)', vim.log.levels.INFO, { title = 'Find member' })
+      end
+      local opts = { bufnr = buf, symbol_width = 60, symbol_type_width = 11 }
+      local conf = require('telescope.config').values
+      require('telescope.pickers').new(opts, {
+        prompt_title = 'Find member: ' .. vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ':t'),
+        finder = require('telescope.finders').new_table({
+          results = vim.lsp.util.symbols_to_items(res, buf, client.offset_encoding),
+          entry_maker = require('telescope.make_entry').gen_from_lsp_symbols(opts),
+        }),
+        previewer = conf.qflist_previewer(opts),
+        sorter = conf.prefilter_sorter({ tag = 'symbol_type', sorter = conf.generic_sorter(opts) }),
+      }):find()
+    end, buf)
 end
 
 return M
