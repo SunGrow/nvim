@@ -150,8 +150,17 @@ local function count_breakpoints()
   return n
 end
 
+--- The session's adapter type ('dbgeng', 'codelldb', ...); without a session, the one F5 would start.
+local function adapter()
+  local s = package.loaded['dap'] and require('dap').session()
+  if s then return s.config.type end
+  return require('core.context').is_ue and 'dbgeng' or 'codelldb'
+end
+
 --- Exception settings as clickable checkboxes ("[x] ensure  [ ] C++ throw  [x] AV  2 ignored").
+--- They are dbgeng-dap's filters: empty for other debuggers.
 local function filter_boxes(labels)
+  if adapter() ~= 'dbgeng' then return '' end
   local parts = {}
   for _, f in ipairs(M.FILTERS) do
     local on = load()[f.id]
@@ -180,7 +189,11 @@ local TITLES = {
   end,
   dapui_stacks = function() return '%#Title# Call stack %*%<  click/⏎ open frame · ? keys' end,
   dapui_watches = function() return '%#Title# Watches %*%<  i add · d delete · ? keys' end,
-  ['dap-repl'] = function() return '%#Title# Debug console %*%<  type an expression, ⏎ evaluates · ? keys' end,
+  ['dap-repl'] = function()
+    -- codelldb's console is in lldb's "commands" mode: `?expr` evaluates, the rest are lldb commands
+    local how = adapter() == 'codelldb' and '?expr evaluates · lldb commands' or 'type an expression, ⏎ evaluates'
+    return '%#Title# Debug console %*%<  ' .. how .. ' · ? keys'
+  end,
 }
 
 -- Every debugger key, in the order a newcomer needs them: the toolbar, `?` and F1 are made from this.
@@ -217,7 +230,7 @@ local PANEL_HELP = {
   '  Breakpoints   click / ⏎ go to it · t enable/disable · d delete · click [x] to toggle an exception',
   '  Variables     ⏎ / double-click expand · r copy to the console',
   '  Watches       i type an expression, ⏎ adds it · d delete · ⏎ expand',
-  '  Console       type an expression or a debugger command, ⏎ runs it',
+  '  Console       an expression or a debugger command, ⏎ runs it (codelldb: ?expr evaluates)',
 }
 
 --- Lines for the debugger key list (`?` in the panels, <leader>d?, and the F1 sheet).

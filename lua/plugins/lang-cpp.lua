@@ -67,8 +67,32 @@ return {
             name = 'Launch executable',
             type = 'codelldb',
             request = 'launch',
+            -- the prompt starts with the program debugged last in this folder, else the newest
+            -- executable under it (just built); Enter takes it, Tab completes paths
             program = function()
-              return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/', 'file')
+              local state = vim.fn.stdpath('state') .. '/dap-programs.json'
+              local ok, last = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(state), '\n')) end)
+              last = ok and type(last) == 'table' and last or {}
+              local cwd = vim.fn.getcwd()
+              local guess = last[cwd]
+              if not (guess and vim.fn.executable(guess) == 1) then
+                local newest = -1
+                guess = nil
+                for name, type in vim.fs.dir(cwd, { depth = 3, skip = function(d) return not d:match('^%.') end }) do
+                  local path = cwd .. '/' .. name
+                  -- a program: foo.exe on Windows, an executable file without an extension elsewhere
+                  local program = type == 'file' and vim.fn.executable(path) == 1
+                    and (name:match('%.exe$') or not name:match('%.%w+$'))
+                  local st = program and vim.uv.fs_stat(path)
+                  if st and st.mtime.sec > newest then guess, newest = path, st.mtime.sec end
+                end
+              end
+              local program = vim.fn.input('Program to debug (Enter: this one, Tab: complete): ', guess or (cwd .. '/'), 'file')
+              if program == '' then return require('dap').ABORT end
+              program = vim.fn.fnamemodify(program, ':p')
+              last[cwd] = program
+              pcall(vim.fn.writefile, { vim.json.encode(last) }, state)
+              return program
             end,
             cwd = '${workspaceFolder}',
             stopOnEntry = false,
