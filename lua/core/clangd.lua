@@ -177,7 +177,8 @@ function M.index_text()
   if not index or not index.total or index.total == 0 then return '' end
   local pct = index.pct or math.floor(index.done * 100 / index.total)
   local j = threads()
-  return ('⚙ index %d%%'):format(pct) .. (j and (' · %d threads'):format(j) or '')
+  -- '%%' in a statusline is a literal '%'; a bare '% ' is E539, and lualine stops refreshing
+  return ('⚙ index %d%%%%'):format(pct) .. (j and (' · %d threads'):format(j) or '')
 end
 
 --- Statusline click: what the index is doing.
