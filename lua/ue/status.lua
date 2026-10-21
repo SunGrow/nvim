@@ -2,6 +2,7 @@
 -- whether the UE tooling is busy, ready or down:
 --   "UE ⠋ indexing 42%"  full refresh (first open of a project, VCS change), with progress
 --   "UE ⠋ scanning"      asset scan / file updates / other server work
+--   "UE ⠋ compile db"    clangd's compile_commands.json being regenerated (ue/compiledb.lua)
 --   "UE ✓"               idle: index ready
 --   "UE ✗"               server not reachable
 -- Server state comes from UNL.status (polls the server's cheap simple_status); the percentage
@@ -59,11 +60,17 @@ local function state()
   return st
 end
 
+local function cdb_busy()
+  local cdb = package.loaded['ue.compiledb']
+  return cdb ~= nil and cdb.busy()
+end
+
 function M.text()
   local st = state()
+  local frame = SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1]
+  if cdb_busy() and (st == 'offline' or QUIET[st]) then return 'UE ' .. frame .. ' compile db' end
   if st == 'offline' then return 'UE ✗' end
   if QUIET[st] then return 'UE ✓' end
-  local frame = SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1]
   local label = BUSY_LABEL[st] or st
   if st == 'refreshing' and refresh then
     return ('UE %s %s %d%%'):format(frame, label, refresh.aggr:percentage())
@@ -73,6 +80,7 @@ end
 
 function M.color()
   local st = state()
+  if cdb_busy() then return { fg = '#e0af68' } end
   if st == 'offline' then return { fg = '#f7768e' } end
   if QUIET[st] then return { fg = '#9ece6a' } end
   return { fg = '#e0af68' }
@@ -81,7 +89,7 @@ end
 --- True while something is running, so the statusline can redraw faster for the spinner.
 function M.busy()
   local st = state()
-  return st ~= 'offline' and not QUIET[st]
+  return cdb_busy() or (st ~= 'offline' and not QUIET[st])
 end
 
 return M

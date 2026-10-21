@@ -154,6 +154,20 @@ function M.build(cfg, on_success)
   cfg = cfg or M.selected()
   if not cfg then return notify('No run configuration selected', vim.log.levels.WARN) end
   require('lazy').load({ plugins = { 'UBT.nvim' } })
+  -- UBT.nvim runs one job at a time: starting the build would stop a compile DB update (a few
+  -- seconds), and the stopped job's exit handler would then clear the build's job id.
+  local cdb = require('ue.compiledb')
+  if cdb.busy() then
+    notify('Waiting for the compile_commands.json update ...')
+    local timer = assert(vim.uv.new_timer())
+    timer:start(500, 500, vim.schedule_wrap(function()
+      if cdb.busy() then return end
+      timer:stop()
+      timer:close()
+      M.build(cfg, on_success)
+    end))
+    return
+  end
   notify('Building ' .. cfg.name .. ' ...')
   require('UBT.api').build({
     label = cfg.name,
@@ -164,6 +178,7 @@ function M.build(cfg, on_success)
         notify('Build cancelled: ' .. cfg.name)
       elseif result and result.success then
         notify(('Build succeeded: %s (%ds)'):format(cfg.name, secs))
+        pcall(cdb.after_build)
         if on_success then on_success(cfg) end
       else
         notify(('Build FAILED: %s (%ds) - <leader>be lists the errors'):format(cfg.name, secs), vim.log.levels.ERROR)

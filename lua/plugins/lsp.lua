@@ -66,18 +66,21 @@ return {
     end
 
     -- UE: engine root comes from the project compile DB ("directory" is <root>/Engine/Source).
+    -- Read on use: on a project's first open the DB is generated after startup (ue/compiledb.lua).
     local ctx = require('core.context')
-    local engine_root
-    if is_ue_project then
+    local engine_root_found
+    local function engine_root()
+      if engine_root_found or not is_ue_project then return engine_root_found end
       local f = io.open(ctx.ue_project_root .. '/compile_commands.json', 'r')
       if f then
         local dir = (f:read(8192) or ''):match('"directory"%s*:%s*"([^"]+)"')
         f:close()
         if dir then
           dir = vim.fs.normalize((dir:gsub('\\\\', '/')))
-          engine_root = dir:match('^(.*)/Engine/Source/?$') or dir:match('^(.*)/Engine/')
+          engine_root_found = dir:match('^(.*)/Engine/Source/?$') or dir:match('^(.*)/Engine/')
         end
       end
+      return engine_root_found
     end
     local function under(path, root)
       return root ~= nil and path:lower():sub(1, #root + 1) == root:lower() .. '/'
@@ -86,7 +89,7 @@ return {
     local engine_cdb = vim.fs.normalize((vim.env.UE_LSP_CACHE_DIR or (vim.env.LOCALAPPDATA or '') .. '/ue-lsp/cache')
       .. '/engine-cdb')
     local function is_engine_cpp(path)
-      return under(path, engine_root) and path:match('%.cpp$') ~= nil
+      return under(path, engine_root()) and path:match('%.cpp$') ~= nil
         and vim.uv.fs_stat(engine_cdb .. '/compile_commands.json') ~= nil
     end
 
@@ -101,13 +104,13 @@ return {
       clangd_conf.root_dir = function(bufnr, on_dir)
         local path = vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))
         if is_engine_cpp(path) then return end -- clangd_engine
-        if under(path, ctx.ue_project_root) or under(path, engine_root) then return on_dir(ctx.ue_project_root) end
+        if under(path, ctx.ue_project_root) or under(path, engine_root()) then return on_dir(ctx.ue_project_root) end
         on_dir(vim.fs.root(bufnr, markers))
       end
     end
     vim.lsp.config('clangd', clangd_conf)
 
-    if is_ue_project and engine_root then
+    if is_ue_project then
       vim.lsp.config('clangd_engine', {
         capabilities = capabilities,
         cmd = {
@@ -117,7 +120,7 @@ return {
         },
         filetypes = { 'cpp' },
         root_dir = function(bufnr, on_dir)
-          if is_engine_cpp(vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))) then on_dir(engine_root) end
+          if is_engine_cpp(vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))) then on_dir(engine_root()) end
         end,
       })
       vim.lsp.enable('clangd_engine')
@@ -158,7 +161,7 @@ return {
           local root = vim.fs.root(bufnr, function(name) return name:match('%.uproject$') ~= nil end)
           if root then return on_dir(root) end
           local path = vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))
-          if under(path, engine_root) and path:match('%.h$') then on_dir(ctx.ue_project_root) end
+          if under(path, engine_root()) and path:match('%.h$') then on_dir(ctx.ue_project_root) end
         end,
         init_options = { cpp = { completion = false } },
       })

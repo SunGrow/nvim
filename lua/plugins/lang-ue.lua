@@ -354,6 +354,8 @@ return {
     cond = is_ue_project,
     cmd = { 'UBT' },
     dependencies = { 'taku25/UNL.nvim' },
+    -- compile_commands.json is generated and refreshed by itself (lua/ue/compiledb.lua)
+    init = function() require('ue.compiledb').setup() end,
     -- Presets are generated like Rider's run configurations (lua/ue/run.lua): one per
     -- Source/*.Target.cs target x buildable configuration, named "DebugGame Editor", "Development", ...
     -- UBT's own dynamic presets (every target UNL knows x every configuration) are not used.
@@ -386,7 +388,7 @@ return {
       { '<leader>bX', function() require('ue.run').pick(require('ue.run').run) end, desc = 'Run (pick configuration)' },
       { '<leader>bR', function() require('ue.run').run_no_build() end, desc = 'Run selected without building' },
       { '<leader>bs', function() require('ue.run').stop() end, desc = 'Stop (debug session / run / build)' },
-      { '<leader>bj', '<cmd>UBT gen_compile_db<CR>', desc = 'Generate compile_commands.json' },
+      { '<leader>bj', function() require('ue.compiledb').generate('<leader>bj') end, desc = 'Regenerate compile_commands.json' },
       { '<leader>bJ', '<cmd>UBT gen_project<CR>', desc = 'Generate .sln' },
       { '<leader>be', '<cmd>UBT diagnostics<CR>', desc = 'Build diagnostics' },
       { '<leader>Uh', '<cmd>UBT gen_header<CR>', desc = 'Unreal: Generate headers (UHT)' },
@@ -562,7 +564,7 @@ return {
                 -- Regenerate compile_commands.json so clangd picks up the new files
                 local function on_complete(success)
                   if success then
-                    vim.cmd('UBT gen_compile_db')
+                    require('ue.compiledb').generate('new ' .. cls_name)
                   end
                 end
                 if kind == 'Class' then
