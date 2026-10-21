@@ -120,6 +120,32 @@ return {
         on_dir(vim.fs.root(bufnr, markers))
       end
     end
+    -- WSL in a Windows UE project: UBT's compile database is clang-cl + MSVC with C:/ and D:/ paths, which
+    -- the Linux clangd cannot use (it parsed every file without flags: no UE types). Windows' clangd.exe
+    -- (Mason, from the Windows Neovim) reads it natively and reuses the project's index; --path-mappings
+    -- turns /mnt/d/... into D:/... and back. The project root keeps the spelling used here, since
+    -- /mnt/d/development and /mnt/d/Development are different buffers to Neovim.
+    local wsl_ue = ctx.wsl_ue
+    local win_clangd = wsl_ue and vim.uv.fs_stat(wsl_ue.root .. '/compile_commands.json')
+      and (vim.env.CLANGD_WINDOWS or vim.fn.glob('/mnt/c/Users/*/AppData/Local/nvim-data/mason/packages/clangd/*/bin/clangd.exe', false, true)[1])
+    if win_clangd then
+      clangd_bin = win_clangd
+      local maps = { wsl_ue.root .. '=/' .. wsl_ue.win_root }
+      for name, type in vim.fs.dir('/mnt') do
+        if type == 'directory' and name:match('^%a$') then maps[#maps + 1] = ('/mnt/%s=/%s:'):format(name, name:upper()) end
+      end
+      clangd_conf.cmd = {
+        win_clangd, '--compile-commands-dir=' .. wsl_ue.win_root, '--path-mappings=' .. table.concat(maps, ','),
+        '--background-index', '--background-index-priority=background', '--completion-style=detailed',
+        '--function-arg-placeholders=false', '-j=4', '--limit-results=500', '--header-insertion=never',
+        '--pch-storage=disk',
+      }
+      -- everything on a Windows drive (project and engine headers) goes to this one server; it cannot
+      -- read files inside the Linux file system
+      clangd_conf.root_dir = function(bufnr, on_dir)
+        if vim.api.nvim_buf_get_name(bufnr):match('^/mnt/%a/') then on_dir(wsl_ue.root) end
+      end
+    end
     vim.lsp.config('clangd', clangd_conf)
     -- mason-lspconfig's automatic_enable covers only servers Mason installed; on Linux (WSL) clangd
     -- comes from the distribution (ensure_installed above)
