@@ -344,6 +344,23 @@ function M.setup()
     ensure_stop = body ~= nil and body.description == 'ensure() failed' -- dbgeng-dap's ensure stop
     vim.schedule(repaint)
   end
+  -- clangd needs 40-50 s for a UE file's first parse: start it for the call stack's project files when the
+  -- debugger stops, so clicking a frame shows a parsed file (nearest frames first, top frame is opened anyway)
+  dap.listeners.after.stackTrace['debug_ui'] = function(_, err, response, request)
+    if err or not response or (request and (request.startFrame or 0) > 0) then return end
+    local files, seen = {}, {}
+    for _, f in ipairs(response.stackFrames or {}) do
+      local path = f.source and f.source.path
+      if path and not seen[path] and (f.source.presentationHint ~= 'deemphasize') then
+        seen[path] = true
+        files[#files + 1] = path
+      end
+    end
+    vim.schedule(function() require('core.clangd').prewarm(files, 'dap') end)
+  end
+  for _, ev in ipairs({ 'event_terminated', 'event_exited' }) do
+    dap.listeners.after[ev]['debug_ui_clangd'] = function() require('core.clangd').release('dap') end
+  end
   for _, ev in ipairs({ 'event_continued', 'event_terminated', 'event_exited', 'continue' }) do
     dap.listeners.after[ev]['debug_ui'] = function()
       if ensure_stop then

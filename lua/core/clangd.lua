@@ -9,6 +9,9 @@
 -- to its body or <M-o> lands on a parsed file. A UE file's preamble holds the engine headers of the
 -- module's shared PCH and takes 20-50 s to build. Neovim's own didOpen for the file later replaces
 -- the text (same text: the preamble is reused); otherwise it is closed with the buffer it came from.
+--
+-- M.prewarm() does the same for other files the user is about to open: the project files of the
+-- debugger's call stack when it stops (lua/core/debug_ui.lua).
 local M = {}
 
 local MAX_WARM = 3
@@ -41,33 +44,61 @@ local function file_text(fname)
   return text
 end
 
+--- Opens a project file in clangd without a buffer (keeps the MAX_WARM most recent).
+--- origin: the buffer whose deletion closes it, or a tag such as 'dap'.
+local function warm_open(client, fname, origin)
+  local uri = vim.uri_from_fname(fname)
+  if warm[uri] then return end
+  local b = vim.fn.bufnr(fname)
+  if b ~= -1 and vim.api.nvim_buf_is_loaded(b) then return end -- open in Neovim already
+  local root = require('core.context').ue_project_root
+  if not root or vim.fs.normalize(fname):lower():sub(1, #root + 1) ~= root:lower() .. '/' then return end
+  local text = file_text(fname)
+  if not text then return end
+  -- forget documents of clients that are gone (clangd restarted)
+  for u, w in pairs(warm) do
+    if not vim.lsp.get_client_by_id(w.client) then warm[u] = nil end
+  end
+  local count, oldest = 0, nil
+  for u, w in pairs(warm) do
+    count = count + 1
+    if not oldest or w.seq < warm[oldest].seq then oldest = u end
+  end
+  if count >= MAX_WARM and oldest then close_warm(oldest) end
+  seq = seq + 1
+  warm[uri] = { client = client.id, origin = origin, seq = seq }
+  client:notify('textDocument/didOpen', {
+    textDocument = { uri = uri, languageId = 'cpp', version = 0, text = text },
+  })
+end
+
 local function prewarm_counterpart(client, uri)
   local bufnr = vim.uri_to_bufnr(uri)
   client:request('textDocument/switchSourceHeader', { uri = uri }, function(err, other)
-    if err or type(other) ~= 'string' or other == '' or warm[other] then return end
-    local fname = vim.uri_to_fname(other)
-    local b = vim.fn.bufnr(fname)
-    if b ~= -1 and vim.api.nvim_buf_is_loaded(b) then return end -- open in Neovim already
-    local root = require('core.context').ue_project_root
-    if not root or vim.fs.normalize(fname):lower():sub(1, #root + 1) ~= root:lower() .. '/' then return end
-    local text = file_text(fname)
-    if not text then return end
-    -- keep the most recent few; forget documents of clients that are gone (clangd restarted)
-    for u, w in pairs(warm) do
-      if not vim.lsp.get_client_by_id(w.client) then warm[u] = nil end
-    end
-    local count, oldest = 0, nil
-    for u, w in pairs(warm) do
-      count = count + 1
-      if not oldest or w.seq < warm[oldest].seq then oldest = u end
-    end
-    if count >= MAX_WARM and oldest then close_warm(oldest) end
-    seq = seq + 1
-    warm[other] = { client = client.id, origin = bufnr, seq = seq }
-    client:notify('textDocument/didOpen', {
-      textDocument = { uri = other, languageId = 'cpp', version = 0, text = text },
-    })
+    if err or type(other) ~= 'string' or other == '' then return end
+    warm_open(client, vim.uri_to_fname(other), bufnr)
   end, bufnr)
+end
+
+--- Starts clangd's parse of up to MAX_WARM project files the user is likely to open next.
+--- Earlier files win; files open in Neovim are skipped.
+function M.prewarm(fnames, origin)
+  local client = vim.lsp.get_clients({ name = 'clangd' })[1]
+  if not client or not require('core.context').is_ue then return end
+  local n = 0
+  for _, fname in ipairs(fnames) do
+    if n >= MAX_WARM then break end
+    local before = warm[vim.uri_from_fname(fname)]
+    warm_open(client, fname, origin)
+    if warm[vim.uri_from_fname(fname)] and not before then n = n + 1 end
+  end
+end
+
+--- Closes the files prewarmed with the given origin tag.
+function M.release(origin)
+  for u, w in pairs(warm) do
+    if w.origin == origin then close_warm(u) end
+  end
 end
 
 --- Handler for clangd's textDocument/clangd.fileStatus notification.
