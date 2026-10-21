@@ -296,6 +296,43 @@ local function patch_unl_startup_retry()
   end
 end
 
+-- UNL's index keeps directories as path components (Prefix "D:", RootDir "/", ...) and rebuilds them as
+-- `D:///Development/...` (scanner/src/db/path.rs PATH_CTE). Windows opens that, but Neovim names the buffer
+-- `D:\\\Development\...`: a second buffer for an open file, and an LSP URI that matches neither
+-- compile_commands.json nor clangd's index, so clangd parses it cold (minutes during background indexing).
+-- Results are rewritten to `D:/...`, which is also what the server accepts as input (to_db_path_format).
+local function fix_path(s)
+  if s:byte(2) == 58 and s:find('^%a:[/\\][/\\]') then return (s:gsub('^(%a:)[/\\]+', '%1/')) end
+  return s
+end
+
+local function fix_paths(v)
+  if type(v) == 'string' then return fix_path(v) end
+  if type(v) == 'table' then
+    for k, x in pairs(v) do
+      if type(x) == 'string' then
+        v[k] = fix_path(x)
+      elseif type(x) == 'table' then
+        fix_paths(x)
+      end
+    end
+  end
+  return v
+end
+
+local function patch_unl_paths()
+  local ok, remote = pcall(require, 'UNL.db.remote')
+  if not ok or type(remote) ~= 'table' or remote._lazyf_paths_applied then return end
+  remote._lazyf_paths_applied = true
+  local request, request_streaming = remote.request, remote.request_streaming
+  remote.request = function(kind, args, callback)
+    return request(kind, args, callback and function(result, err) callback(fix_paths(result), err) end)
+  end
+  remote.request_streaming = function(kind, args, on_partial, on_complete)
+    return request_streaming(kind, args, on_partial and function(items) on_partial(fix_paths(items)) end, on_complete)
+  end
+end
+
 return {
   -- Core UE runtime/index layer.
   {
@@ -318,6 +355,7 @@ return {
       require('UNL').setup(opts)
       patch_unl_telescope_provider()
       patch_unl_startup_retry()
+      patch_unl_paths()
     end,
     keys = {
       { '<leader>Ur', '<cmd>UNL refresh<CR>', desc = 'Unreal: Refresh project cache' },

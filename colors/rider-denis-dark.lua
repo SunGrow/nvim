@@ -49,6 +49,7 @@ local c = {
   guide_sel = '#666666',   -- SELECTED_INDENT_GUIDE
   whitespace = '#686868',  -- WHITESPACES
   selection = '#08335e',   -- SELECTION_BACKGROUND
+  list_sel = '#35538a',    -- selected row in pickers and menus: brighter than the text selection, which is hard to see on popup
   search = '#484012',      -- TEXT_SEARCH_RESULT_ATTRIBUTES
   search_cur = '#144238',  -- SEARCH_RESULT_ATTRIBUTES
   ref_read = '#232e46',    -- IDENTIFIER_UNDER_CARET_ATTRIBUTES
@@ -100,12 +101,12 @@ local groups = {
   SpecialKey = { fg = c.whitespace },
   EndOfBuffer = { fg = c.bg },
   Pmenu = { fg = c.fg, bg = c.popup },
-  PmenuSel = { bg = c.selection },
+  PmenuSel = { fg = c.bright, bg = c.list_sel, bold = true },
   PmenuSbar = { bg = c.popup_sel },
   PmenuThumb = { bg = c.guide_sel },
   PmenuMatch = { fg = c.keyword, bold = true },
   PmenuMatchSel = { fg = c.keyword, bold = true },
-  WildMenu = { bg = c.selection },
+  WildMenu = { fg = c.bright, bg = c.list_sel, bold = true },
   Directory = { fg = c.keyword },
   Title = { fg = c.bright, bold = true },
   Question = { fg = c.attribute },
@@ -301,13 +302,14 @@ local groups = {
   -- Plugins
   TelescopeNormal = { fg = c.fg, bg = c.popup },
   TelescopeBorder = { fg = c.guide_sel, bg = c.popup },
-  TelescopeSelection = { bg = c.selection },
+  TelescopeSelection = { fg = c.bright, bg = c.list_sel, bold = true },
+  TelescopeSelectionCaret = { fg = c.bright, bg = c.list_sel, bold = true },
   TelescopeMatching = { fg = c.keyword, bold = true },
   TelescopePromptPrefix = { fg = c.keyword },
   TelescopeTitle = { fg = c.bright, bold = true },
   BlinkCmpMenu = { fg = c.fg, bg = c.popup },
   BlinkCmpMenuBorder = { fg = c.guide_sel, bg = c.popup },
-  BlinkCmpMenuSelection = { bg = c.selection },
+  BlinkCmpMenuSelection = { fg = c.bright, bg = c.list_sel, bold = true },
   BlinkCmpLabelMatch = { fg = c.keyword, bold = true },
   BlinkCmpLabelDeprecated = { fg = c.unused, strikethrough = true },
   BlinkCmpDoc = { fg = c.fg, bg = c.popup },
