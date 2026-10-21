@@ -173,7 +173,7 @@ end
 local TITLES = {
   dapui_breakpoints = function()
     -- " Breakpoints (1) [x] ensure [ ] throw [x] AV" fits the 44-column panel of a 180-column screen
-    return ('%%#Title# Breakpoints (%d) %%*%%< %s'):format(count_breakpoints(), filter_boxes(false))
+    return ('%%#Title# Breakpoints (%d) %%*%%<%s'):format(count_breakpoints(), filter_boxes(false))
   end,
   dapui_scopes = function()
     return '%#Title# Variables %*%<  ⏎ expand' .. (caps().supportsSetVariable and ' · e edit' or '') .. ' · ? keys'
@@ -360,7 +360,7 @@ local function state_text(session, where)
 end
 
 --- Tabline while debugging: the state, then the buttons usable now (paused: no Pause; running: no
---- steps). It shrinks to fit: the location goes first, then "Step over F10" -> "Over F10" -> "F10".
+--- steps). It shrinks to fit: the location goes first, then the long names, then the keys.
 function M.toolbar()
   local ok, dap = pcall(require, 'dap')
   local session = ok and dap.session()
@@ -377,7 +377,10 @@ function M.toolbar()
     end
     for _, b in ipairs(BUTTONS) do
       if b[5] == 'any' or (b[5] == 'stopped') == stopped then
-        local label = tier == 1 and (b[2] .. ' ' .. b[4]) or tier == 2 and (b[3] .. ' ' .. b[4]) or b[4]
+        -- 1 "Step over F10"  2 "Over F10"  3 "Over F10", "Out" (keys only for plain F-keys)  4 "Over"  5 "F10"
+        local plain = b[4]:match('^F%d+$') or b[4] == '?'
+        local label = tier == 1 and (b[2] .. ' ' .. b[4]) or tier == 2 and (b[3] .. ' ' .. b[4])
+          or tier == 3 and (plain and (b[3] .. ' ' .. b[4]) or b[3]) or tier == 4 and b[3] or b[4]
         out[#out + 1] = (' %%#DapToolbarButton#%%0@v:lua._debug_ui.%s@ %s %%X%%*'):format(b[1], label)
         width = width + vim.fn.strdisplaywidth(label) + 3
       end
@@ -385,7 +388,7 @@ function M.toolbar()
     return table.concat(out), width
   end
   local bar, width
-  for _, try in ipairs({ { 1, true }, { 1, false }, { 2, true }, { 2, false }, { 3, true }, { 3, false } }) do
+  for _, try in ipairs({ { 1, true }, { 1, false }, { 2, true }, { 2, false }, { 3, false }, { 4, false }, { 5, false } }) do
     bar, width = render(try[1], try[2])
     if width <= cols then break end
   end
