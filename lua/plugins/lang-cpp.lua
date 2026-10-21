@@ -28,7 +28,9 @@ return {
         'jay-babu/mason-nvim-dap.nvim',
         dependencies = { 'mason-org/mason.nvim' },
         opts = {
-          ensure_installed = { 'codelldb' },
+          -- codelldb ships as a zip: on Linux Mason needs `unzip` (WSL Ubuntu: sudo apt install unzip);
+          -- without it, asking would fail with an error on every start
+          ensure_installed = (vim.fn.has('win32') == 1 or vim.fn.executable('unzip') == 1) and { 'codelldb' } or {},
         },
       },
     },

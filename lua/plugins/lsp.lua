@@ -9,7 +9,9 @@ return {
     {
       'mason-org/mason-lspconfig.nvim',
       opts = {
-        ensure_installed = { 'lua_ls', 'clangd' },
+        -- Linux (WSL): the distribution's clangd on PATH is used; Mason's needs unzip to install
+        ensure_installed = (vim.fn.has('win32') == 0 and vim.fn.executable('clangd') == 1) and { 'lua_ls' }
+          or { 'lua_ls', 'clangd' },
         automatic_enable = true,
       },
     },
