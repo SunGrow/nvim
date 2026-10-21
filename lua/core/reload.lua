@@ -94,39 +94,37 @@ function M.reload_specs(mods)
   for name in pairs(defined) do
     local p = Config.plugins[name]
     if p then
-      -- keys: drop the old lazy-loading stubs / mappings and add the new ones
+      -- keys: drop the old lazy-loading stubs / mappings and add the new ones. Plugin.load copied the
+      -- old state (`_`) onto the new spec, including the cache of resolved keys/opts: clear it.
       Handler.disable(p)
+      p._.cache = nil
       p._.handlers = nil
       Handler.resolve(p)
       local new_keys = p._.handlers.keys or {}
       for id, k in pairs(old_keys[name] or {}) do
         if not new_keys[id] then pcall(vim.keymap.del, k.mode, k.lhs) end
       end
+      local has_keys = next(new_keys) ~= nil or next(old_keys[name] or {}) ~= nil
+      local has_config = p.config ~= nil or p.opts ~= nil
+      local what = {}
+      if has_keys then what[#what + 1] = 'keys' end
       if p._.loaded then
         for _, k in pairs(new_keys) do
-          if k.rhs then
-            local opts = Keys.opts(k)
-            vim.keymap.set(k.mode, k.lhs, k.rhs, opts)
-          end
+          if k.rhs then vim.keymap.set(k.mode, k.lhs, k.rhs, Keys.opts(k)) end
         end
-        if (p.config or p.opts) and not (in_session and DAP_PLUGINS[name]) then
-          local cok, cerr = pcall(Loader.config, p)
-          if cok then
-            msgs[#msgs + 1] = name .. ' (keys, config)'
-          else
-            failed = true
-            msgs[#msgs + 1] = name .. ': config failed: ' .. tostring(cerr)
-          end
-        elseif in_session and DAP_PLUGINS[name] then
+        if has_config and in_session and DAP_PLUGINS[name] then
           M.after_session(mods)
-          msgs[#msgs + 1] = name .. ' (keys; config after the debug session)'
-        else
-          msgs[#msgs + 1] = name .. ' (keys)'
+          what[#what + 1] = 'config after the debug session'
+        elseif has_config then
+          local cok, cerr = pcall(Loader.config, p) -- lazy reports errors in config itself
+          if not cok then failed = true end
+          what[#what + 1] = cok and 'config' or ('config failed: ' .. tostring(cerr))
         end
       else
         Handler.enable(p)
-        msgs[#msgs + 1] = name .. ' (not loaded yet: new spec on load)'
+        if has_config then what[#what + 1] = 'config when it loads' end
       end
+      if #what > 0 then msgs[#msgs + 1] = name .. ' (' .. table.concat(what, ', ') .. ')' end
     end
   end
   return msgs, failed
