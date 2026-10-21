@@ -200,7 +200,11 @@ if is_ue_project then
   local clangd_config = table.concat({
     'CompileFlags:',
     '  Add: [-D__INTELLISENSE__, -Wno-everything]',
-    '  Remove: [/Yu*, /Yc*, /Fp*, -include-pch]',
+    -- -resource-dir: UBT points it at Visual Studio's clang 19 headers. With those, clangd 20's
+    -- background index records every parameter whose type is a template with a default argument
+    -- (TArray, TMap, TSet, TSharedPtr, std::vector...) as `int`, so usages, overrides and callers of
+    -- such functions are lost. clangd's own headers are used instead.
+    '  Remove: [/Yu*, /Yc*, /Fp*, -include-pch, -resource-dir]',
     '',
     'Diagnostics:',
     '  Suppress: [pp_file_not_found, drv_unknown_argument, unknown_argument]',
@@ -230,7 +234,8 @@ if is_ue_project then
       or existing:find('-include]', 1, true) ~= nil
       or existing:find('-include,', 1, true) ~= nil
     local indexes_intermediate = not existing:find('Background: Skip', 1, true)
-    if managed_by_this_config and (strips_required_forced_includes or indexes_intermediate) then
+    local keeps_resource_dir = not existing:find('-resource-dir', 1, true)
+    if managed_by_this_config and (strips_required_forced_includes or indexes_intermediate or keeps_resource_dir) then
       should_write = true
     end
   end
@@ -238,6 +243,35 @@ if is_ue_project then
   if should_write then
     vim.fn.writefile(vim.split(clangd_config, '\n'), clangd_path)
     vim.notify('Updated .clangd in ' .. project_root, vim.log.levels.INFO)
+  end
+
+  -- An index built with UBT's -resource-dir has the wrong symbol for every function taking a
+  -- TArray/TMap/... (see above), and clangd never re-indexes for changed flags: rebuild it once.
+  -- Done before clangd starts (it runs when lazy reads this spec); with clangd already running
+  -- (a hot reload) only ask for a restart.
+  local cache = project_root .. '/.cache/clangd'
+  local marker = cache .. '/nvim-index-v2' -- written once the index is built with the current flags
+  if not vim.uv.fs_stat(marker) then
+    local index = cache .. '/index'
+    if vim.uv.fs_stat(index) and #vim.lsp.get_clients({ name = 'clangd' }) > 0 then
+      vim.notify('clangd index needs a rebuild (wrong symbols for TArray/TMap parameters): restart Neovim',
+        vim.log.levels.WARN, { title = 'clangd' })
+    else
+      local ok = true
+      if vim.uv.fs_stat(index) then
+        local old = index .. '.old-' .. os.time()
+        ok = vim.uv.fs_rename(index, old) ~= nil
+        if ok then
+          vim.system({ 'cmd.exe', '/c', 'rmdir', '/s', '/q', (old:gsub('/', '\\')) })
+          vim.notify('Rebuilding the clangd index (the old one had wrong symbols for TArray/TMap parameters); '
+            .. 'find usages fills in as it progresses', vim.log.levels.INFO, { title = 'clangd' })
+        end
+      end
+      if ok then
+        vim.fn.mkdir(cache, 'p')
+        vim.fn.writefile({ 'clangd background index built without UBT -resource-dir' }, marker)
+      end
+    end
   end
 
   -- UE Coding Standards: tabs with width 4 for C/C++ files
