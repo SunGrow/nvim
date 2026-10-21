@@ -112,6 +112,7 @@ class Session:
         self.scope_cache, self.stack_cache, self.threads_cache = {}, {}, []
         self.pause_requested = False
         self.exc_filters = {f['filter'] for f in EXC_FILTERS if f['default']}
+        self.ignored_ensures = set()  # (norm(path), line) of ensures that do not suspend
         self.stray_breakins = 0      # DebugBreakProcess break-ins overtaken by a real event
         self.internal = None         # dict while an internal break-in is pending
         self.terminating = False
@@ -431,13 +432,17 @@ class Session:
             self.stray_breakins += 1
         ensure = (ev['kind'] == 'exception' and ev.get('code') == 0x80000003 and not breakin
                   and not self.pause_requested and self._is_ensure())
-        if ensure and 'ensure' not in self.exc_filters:
+        if ensure:
+            # the top frame is UE's ensure lambda; its source line is the ensure() line
             top = P.parse_stack(self.x('kn 1'))
-            where = (f'{os.path.basename(top[0]["file"])}:{top[0]["line"]}'
-                     if top and top[0]['file'] else (top[0]['symbol'] if top else '?'))
-            self.console(f'ensure() failed at {where} (not suspended: "Suspend on ensure" is off)')
-            self._resume('gh')
-            return
+            src = top and (self.map_source(top[0]['file']) or top[0]['file'])
+            where = f'{os.path.basename(src)}:{top[0]["line"]}' if src else (top[0]['symbol'] if top else '?')
+            ignored = bool(src) and (norm(src), top[0]['line']) in self.ignored_ensures
+            if ignored or 'ensure' not in self.exc_filters:
+                why = 'this ensure is ignored' if ignored else '"Suspend on ensure" is off'
+                self.console(f'ensure() failed at {where} (not suspended: {why})')
+                self._resume('gh')
+                return
         if ev['kind'] == 'breakpoint':
             bp = self.cdb_owner.get(ev['bp'])
             if bp is not None:
@@ -743,6 +748,13 @@ class Session:
             self.func_bps = bps
             return {'breakpoints': [bp.dap() for bp in bps]}
         return self.with_target_stopped(apply)
+
+    def req_dbgengIgnoreEnsures(self, a):
+        """Custom request: ensures at these locations do not suspend ({'locations': [{path, line}]};
+        the line is the ensure() line, as the top frame of an ensure stop reports it)."""
+        self.ignored_ensures = {(norm(l['path']), int(l['line'])) for l in a.get('locations') or []
+                                if l.get('path') and l.get('line')}
+        return {}
 
     def req_setExceptionBreakpoints(self, a):
         on = set(a.get('filters') or [])

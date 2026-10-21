@@ -125,6 +125,7 @@ return {
       end, desc = 'Threads (all suspended threads and their stacks)' },
       { '<leader>dx', function() require('core.debug_ui').pick_filters() end, desc = 'Exception breakpoints (ensure, C++ throw, AV)' },
       { '<leader>dE', function() require('core.debug_ui').toggle_filter('ensure') end, desc = 'Toggle suspend on ensure' },
+      { '<leader>dI', function() require('core.debug_ui').ignore_current_ensure() end, desc = 'Ignore this ensure (others still suspend)' },
       -- UE projects: with no session, F5 builds and debugs the selected run configuration (lua/ue/run.lua)
       { '<F5>', function()
         local dap = require('dap')

@@ -7,6 +7,8 @@
 --   * exception settings ("Suspend on ensure", C++ throw, access violation) are checkboxes in the
 --     toolbar (click) and in the Breakpoints title, toggled with <leader>dx / <leader>dE too, and kept
 --     across sessions (stdpath('state')/dap-exceptions.json)
+--   * stopped on an ensure, "Ignore this ensure" (toolbar button, <leader>dI) stops suspending on that
+--     one ensure only, like Rider; <leader>dx lists the ignored ones to bring them back
 local M = {}
 
 -- dbgeng-dap's exceptionBreakpointFilters (tools/dbgeng-dap/dbgeng_dap/adapter.py EXC_FILTERS)
@@ -19,10 +21,12 @@ local DEFAULT_ON = { ensure = true, av = true }
 
 local state_file = vim.fn.stdpath('state') .. '/dap-exceptions.json'
 local enabled -- set of filter ids
+local ignored -- list of { path, line }: ensures that do not suspend
 
 local function load()
   if enabled then return enabled end
   local ok, data = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(state_file), '\n')) end)
+  ignored = ok and type(data) == 'table' and type(data.ignored_ensures) == 'table' and data.ignored_ensures or {}
   enabled = {}
   for _, f in ipairs(M.FILTERS) do
     if ok and type(data) == 'table' and data[f.id] ~= nil then
@@ -50,13 +54,65 @@ local function repaint()
   pcall(vim.api.nvim__redraw, { winbar = true, flush = true })
 end
 
+local function save()
+  local data = vim.deepcopy(load())
+  data.ignored_ensures = ignored
+  pcall(vim.fn.writefile, { vim.json.encode(data) }, state_file)
+end
+
+--- Sends the ignored ensures to a dbgeng-dap session (custom request dbgengIgnoreEnsures).
+local function send_ignored(session)
+  if session and session.config.type == 'dbgeng' then
+    load()
+    session:request('dbgengIgnoreEnsures', { locations = ignored }, function() end)
+  end
+end
+
 --- Applies the settings to new sessions and to the running one.
 local function apply()
   local dap = require('dap')
   dap.defaults.dbgeng.exception_breakpoints = filter_list()
-  if dap.session() then dap.set_exception_breakpoints(filter_list()) end
-  pcall(vim.fn.writefile, { vim.json.encode(load()) }, state_file)
+  if dap.session() then
+    dap.set_exception_breakpoints(filter_list())
+    send_ignored(dap.session())
+  end
+  save()
   repaint()
+end
+
+-- Ignored ensures ------------------------------------------------------------------------------
+local ensure_stop = false -- the session is stopped on a failed ensure
+
+local function where(loc)
+  return vim.fn.fnamemodify(loc.path, ':t') .. ':' .. loc.line
+end
+
+--- Stopped on an ensure: that ensure no longer suspends (this and later sessions).
+function M.ignore_current_ensure()
+  local session = require('dap').session()
+  local thread = session and session.stopped_thread_id and session.threads[session.stopped_thread_id]
+  local top = thread and thread.frames and thread.frames[1]
+  if not ensure_stop or not (top and top.source and top.source.path) then
+    return vim.notify('Not stopped on an ensure', vim.log.levels.WARN, { title = 'Debug' })
+  end
+  load()
+  local loc = { path = top.source.path, line = top.line }
+  for _, l in ipairs(ignored) do
+    if l.path:lower() == loc.path:lower() and l.line == loc.line then return end
+  end
+  ignored[#ignored + 1] = loc
+  apply()
+  vim.notify(('Ensure at %s will not suspend again (F5 continues; <leader>dx brings it back)'):format(where(loc)),
+    vim.log.levels.INFO, { title = 'Debug' })
+end
+
+function M.unignore(i)
+  load()
+  local loc = table.remove(ignored, i)
+  if loc then
+    apply()
+    vim.notify('Ensure at ' .. where(loc) .. ' suspends again', vim.log.levels.INFO, { title = 'Debug' })
+  end
 end
 
 function M.toggle_filter(id)
@@ -67,14 +123,22 @@ function M.toggle_filter(id)
   end
 end
 
---- Picker over the exception settings; picking one toggles it and reopens the list.
+--- Picker over the exception settings and the ignored ensures; picking an item toggles it (an
+--- ignored ensure suspends again) and reopens the list.
 function M.pick_filters()
-  vim.ui.select(M.FILTERS, {
+  load()
+  local items = {}
+  for _, f in ipairs(M.FILTERS) do items[#items + 1] = { filter = f } end
+  for i, loc in ipairs(ignored) do items[#items + 1] = { ignored = i, loc = loc } end
+  vim.ui.select(items, {
     prompt = 'Exception breakpoints (select to toggle)',
-    format_item = function(f) return (load()[f.id] and '[x] ' or '[ ] ') .. f.label end,
-  }, function(f)
-    if not f then return end
-    M.toggle_filter(f.id)
+    format_item = function(it)
+      if it.filter then return (load()[it.filter.id] and '[x] ' or '[ ] ') .. it.filter.label end
+      return '[ignored ensure] ' .. where(it.loc) .. '  (select to suspend on it again)'
+    end,
+  }, function(it)
+    if not it then return end
+    if it.filter then M.toggle_filter(it.filter.id) else M.unignore(it.ignored) end
     vim.schedule(M.pick_filters)
   end)
 end
@@ -91,6 +155,7 @@ local function filters_text()
   for _, f in ipairs(M.FILTERS) do
     parts[#parts + 1] = f.short .. (load()[f.id] and ' ✓' or ' ✗')
   end
+  if #ignored > 0 then parts[#parts + 1] = ('%d ignored'):format(#ignored) end
   return table.concat(parts, '  ')
 end
 
@@ -118,8 +183,9 @@ local HELP = {
   '               <leader>dk / <leader>dj: frame up (caller) / down',
   '  Threads      <leader>dT: all threads and their stacks',
   '  Breakpoints  click / Enter: go to   t: enable/disable   d: delete',
-  '  Exceptions   <leader>dx: pick (ensure, C++ throw, access violation)',
+  '  Exceptions   <leader>dx: pick (ensure, C++ throw, access violation, ignored ensures)',
   '               <leader>dE: toggle Suspend on ensure',
+  '               <leader>dI: ignore this ensure (stopped on one; others still suspend)',
   '  Variables    Enter / double-click: expand   e: edit   r: send to REPL',
   '  Evaluate     <leader>de: expression (also visual)   <leader>dh: value under cursor',
   '  Panels       <leader>du: show/hide   <leader>dr: REPL',
@@ -210,13 +276,22 @@ for _, f in ipairs(M.FILTERS) do
   _G._debug_ui[f.id] = function() M.toggle_filter(f.id) end
 end
 
+_G._debug_ui.ignore_ensure = function() M.ignore_current_ensure() end
+_G._debug_ui.pick = function() M.pick_filters() end
+
 function M.toolbar_checkboxes()
   local parts = {}
+  if ensure_stop then
+    parts[#parts + 1] = '%#DapUIDebugIgnoreBtn#%0@v:lua._debug_ui.ignore_ensure@ Ignore this ensure %X%*'
+  end
   for _, f in ipairs(M.FILTERS) do
     local on = load()[f.id]
     parts[#parts + 1] = ('%%#%s#%%0@v:lua._debug_ui.%s@%s %s%%X%%*'):format(
       on and 'DapUIDebugOnBox' or 'DapUIDebugOffBox', f.id, on and '[x]' or '[ ]',
       f.id == 'ensure' and 'Suspend on ensure' or f.short)
+  end
+  if #ignored > 0 then
+    parts[#parts + 1] = ('%%0@v:lua._debug_ui.pick@%d ignored%%X'):format(#ignored)
   end
   return '   │  ' .. table.concat(parts, '   ') .. '   │  ? keys'
 end
@@ -241,6 +316,7 @@ function M.setup()
     vim.api.nvim_set_hl(0, 'DapStoppedLine', { default = true, link = 'Visual' })
     vim.api.nvim_set_hl(0, 'DapUIDebugOnBox', { default = true, link = 'DiagnosticOk' })
     vim.api.nvim_set_hl(0, 'DapUIDebugOffBox', { default = true, link = 'Comment' })
+    vim.api.nvim_set_hl(0, 'DapUIDebugIgnoreBtn', { default = true, link = 'DiffChange' })
   end
   hl_defaults()
   local signs = {
@@ -259,8 +335,22 @@ function M.setup()
     callback = function(ev) set_winbars(ev.buf) end,
   })
 
-  require('dap').defaults.dbgeng.exception_breakpoints = filter_list()
+  local dap = require('dap')
+  dap.defaults.dbgeng.exception_breakpoints = filter_list()
   hook_controls()
+  dap.listeners.after.event_initialized['debug_ui'] = function(session) send_ignored(session) end
+  dap.listeners.after.event_stopped['debug_ui'] = function(_, body)
+    ensure_stop = body ~= nil and body.description == 'ensure() failed' -- dbgeng-dap's ensure stop
+    vim.schedule(repaint)
+  end
+  for _, ev in ipairs({ 'event_continued', 'event_terminated', 'event_exited', 'continue' }) do
+    dap.listeners.after[ev]['debug_ui'] = function()
+      if ensure_stop then
+        ensure_stop = false
+        vim.schedule(repaint)
+      end
+    end
+  end
 end
 
 return M
