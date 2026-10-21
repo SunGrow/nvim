@@ -40,6 +40,7 @@ A modular Neovim 0.11+ configuration in Lua, managed by lazy.nvim. Runs on Windo
 - dbgeng-dap exception filter `ensure` (on by default, like Rider's "Suspend on ensure"):
   - A failed `ensure()` breaks in UE's ensure lambda, whose static locals are `ENSURE_Static`/`ENSURE_bExecuted` (`AssertionMacros.h` `UE_ENSURE_IMPL2`).
   - With the filter off, the adapter writes `ensure() failed at File.cpp:N` to the console and continues. With it on, the stop reads "ensure() failed".
+  - Per-ensure mute, like Rider: stopped on an ensure, the toolbar shows "Ignore this ensure" (also `<leader>dI`). That ensure's location (top frame file:line) goes to `ignored_ensures` in `dap-exceptions.json` and to the adapter through the custom request `dbgengIgnoreEnsures` (at each session start and on change). The adapter then logs `ensure() failed at File.cpp:N (not suspended: this ensure is ignored)` and continues; other ensures still suspend. `<leader>dx` lists ignored ensures; selecting one brings it back.
   - Frames show the function name (with source) or a short module name (`CoreUObject!UFunction::Invoke`).
 
 ## Conventions
