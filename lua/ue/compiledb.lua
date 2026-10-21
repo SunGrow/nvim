@@ -21,6 +21,8 @@ local state = {
   files = nil,     -- set of lower-case file paths in the database
   tried = {},      -- .cpp files a generation already ran for (UBT may not compile every .cpp)
   waiting = nil,   -- timer waiting for a running UBT job (build) to end
+  retry = nil,     -- timer of a retry after UBT reported a conflicting instance
+  conflicts = 0,   -- retries so far
 }
 local pch_cache = {}
 
@@ -161,6 +163,14 @@ local function finished()
   restart_clangd()
 end
 
+local MAX_CONFLICTS = 6
+
+--- The last UBT job failed because another UnrealBuildTool instance was running.
+local function conflicting_instance()
+  local ok, path = pcall(function() return require('UBT.path').get_progress_log_file_path() end)
+  return ok and (read(path) or ''):find('ConflictingInstance', 1, true) ~= nil
+end
+
 local function ubt_busy()
   local ok, runner = pcall(require, 'UBT.job.runner')
   return ok and runner.is_running()
@@ -170,7 +180,7 @@ end
 --- UBT.nvim runs one job at a time and starting one stops the other.
 function M.generate(reason)
   if not ctx.is_ue then return end
-  if state.running then
+  if state.running or state.retry then
     state.queued = state.queued or reason
     return
   end
@@ -197,9 +207,18 @@ function M.generate(reason)
     on_complete = function(result)
       state.running = false
       if result and result.success then
+        state.conflicts = 0
         finished()
         notify(('compile_commands.json updated (%s, %ds)'):format(reason, result.elapsed_s or 0))
+      elseif conflicting_instance() and state.conflicts < MAX_CONFLICTS then
+        -- Another UnrealBuildTool (the editor, another Neovim) holds UBT's global mutex for a moment.
+        state.conflicts = state.conflicts + 1
+        state.retry = vim.defer_fn(function()
+          state.retry = nil
+          M.generate(reason)
+        end, 10000)
       else
+        state.conflicts = 0
         notify('compile_commands.json update failed (' .. reason .. ') - :UBT log has the output', vim.log.levels.WARN)
       end
       vim.cmd.redrawstatus()
@@ -210,8 +229,14 @@ function M.generate(reason)
   })
 end
 
-function M.busy()
+--- A UBT job of ours is running (builds wait for it).
+function M.running()
   return state.running
+end
+
+--- Running or about to retry (statusline).
+function M.busy()
+  return state.running or state.retry ~= nil
 end
 
 --- After a successful build: modules built for the first time now have their PCH response files.

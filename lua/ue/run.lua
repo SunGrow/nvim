@@ -157,11 +157,11 @@ function M.build(cfg, on_success)
   -- UBT.nvim runs one job at a time: starting the build would stop a compile DB update (a few
   -- seconds), and the stopped job's exit handler would then clear the build's job id.
   local cdb = require('ue.compiledb')
-  if cdb.busy() then
+  if cdb.running() then
     notify('Waiting for the compile_commands.json update ...')
     local timer = assert(vim.uv.new_timer())
     timer:start(500, 500, vim.schedule_wrap(function()
-      if cdb.busy() then return end
+      if cdb.running() then return end
       timer:stop()
       timer:close()
       M.build(cfg, on_success)
