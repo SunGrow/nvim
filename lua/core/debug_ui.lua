@@ -14,7 +14,7 @@ local M = {}
 -- dbgeng-dap's exceptionBreakpointFilters (tools/dbgeng-dap/dbgeng_dap/adapter.py EXC_FILTERS)
 M.FILTERS = {
   { id = 'ensure', label = 'Suspend on ensure', short = 'ensure' },
-  { id = 'cpp_throw', label = 'C++ throw (first chance)', short = 'C++ throw' },
+  { id = 'cpp_throw', label = 'C++ throw (first chance)', short = 'throw' },
   { id = 'av', label = 'Access violation (first chance)', short = 'AV' },
 }
 local DEFAULT_ON = { ensure = true, av = true }
@@ -159,7 +159,7 @@ local function filter_boxes(labels)
       on and 'DapUIDebugOnBox' or 'DapUIDebugOffBox', f.id, on and '[x]' or '[ ]', labels and f.label or f.short)
   end
   if #ignored > 0 then parts[#parts + 1] = ('%%0@v:lua._debug_ui.pick@%d ignored%%X'):format(#ignored) end
-  return table.concat(parts, '  ')
+  return table.concat(parts, labels and '  ' or ' ')
 end
 
 --- Capabilities of the running debug adapter (dbgeng-dap: no "set variable", no logpoints).
@@ -172,7 +172,8 @@ end
 -- drops the tail first when a panel is narrower.
 local TITLES = {
   dapui_breakpoints = function()
-    return ('%%#Title# Breakpoints (%d) %%*%%<  %s'):format(count_breakpoints(), filter_boxes(false))
+    -- " Breakpoints (1) [x] ensure [ ] throw [x] AV" fits the 44-column panel of a 180-column screen
+    return ('%%#Title# Breakpoints (%d) %%*%%< %s'):format(count_breakpoints(), filter_boxes(false))
   end,
   dapui_scopes = function()
     return '%#Title# Variables %*%<  ⏎ expand' .. (caps().supportsSetVariable and ' · e edit' or '') .. ' · ? keys'
@@ -185,7 +186,7 @@ local TITLES = {
 -- Every debugger key, in the order a newcomer needs them: the toolbar, `?` and F1 are made from this.
 -- key: as shown; lhs: the mapping (checked by the F1 sheet); toolbar: button id when it has one.
 M.KEYS = {
-  { key = 'F5', lhs = '<F5>', desc = 'Start debugging (builds first) / Continue' },
+  { key = 'F5', lhs = '<F5>', desc = 'Start debugging / continue' },
   { key = 'F6', lhs = '<F6>', desc = 'Pause' },
   { key = 'Shift+F5', lhs = '<S-F5>', desc = 'Stop' },
   { key = 'Ctrl+Shift+F5', lhs = '<C-S-F5>', desc = 'Restart (builds again)' },
@@ -194,19 +195,19 @@ M.KEYS = {
   { key = 'Shift+F11', lhs = '<S-F11>', desc = 'Step out' },
   { key = 'Ctrl+F10', lhs = '<C-F10>', desc = 'Run to cursor' },
   {},
-  { key = 'F9', lhs = '<F9>', desc = 'Breakpoint on this line (on / off)' },
-  { key = 'Space dB', lhs = '<leader>dB', desc = 'Breakpoint with a condition (e.g. i == 3)' },
+  { key = 'F9', lhs = '<F9>', desc = 'Breakpoint on / off' },
+  { key = 'Space dB', lhs = '<leader>dB', desc = 'Breakpoint with a condition' },
   { key = 'Space dL', lhs = '<leader>dL', desc = 'List all breakpoints' },
   { key = 'Space dC', lhs = '<leader>dC', desc = 'Delete all breakpoints' },
-  { key = 'Space dx', lhs = '<leader>dx', desc = 'Exceptions: ensure, C++ throw, access violation' },
-  { key = 'Space dI', lhs = '<leader>dI', desc = 'Ignore this ensure (stopped on one; others still stop)' },
+  { key = 'Space dx', lhs = '<leader>dx', desc = 'Stop on: ensure, C++ throw, AV' },
+  { key = 'Space dI', lhs = '<leader>dI', desc = 'Ignore this ensure from now on' },
   {},
-  { key = 'Space dh', lhs = '<leader>dh', desc = 'Value of the variable under the cursor' },
-  { key = 'Space de', lhs = '<leader>de', desc = 'Evaluate an expression (or the selection)' },
-  { key = 'Space dw', lhs = '<leader>dw', desc = 'Add the word / selection to Watches' },
-  { key = 'Space dk / dj', lhs = '<leader>dk', desc = 'Go to the caller / back down the call stack' },
-  { key = 'Space dT', lhs = '<leader>dT', desc = 'All threads and their call stacks' },
-  { key = 'Space du', lhs = '<leader>du', desc = 'Show / hide the debugger panels' },
+  { key = 'Space dh', lhs = '<leader>dh', desc = 'Value under the cursor' },
+  { key = 'Space de', lhs = '<leader>de', desc = 'Evaluate an expression' },
+  { key = 'Space dw', lhs = '<leader>dw', desc = 'Add to Watches' },
+  { key = 'Space dk / dj', lhs = '<leader>dk', desc = 'Call stack: caller / back' },
+  { key = 'Space dT', lhs = '<leader>dT', desc = 'All threads' },
+  { key = 'Space du', lhs = '<leader>du', desc = 'Show / hide debugger panels' },
 }
 
 local PANEL_HELP = {
@@ -345,27 +346,29 @@ local REASONS = { breakpoint = 'at a breakpoint', step = 'after a step', pause =
   goto = 'at the cursor' }
 
 --- "Paused at a breakpoint in add_points (demo.c:8)" / "Running"; plain text and highlight group.
-local function state_text(session)
+--- where = false leaves out the function and file (narrow screens; the code shows them anyway).
+local function state_text(session, where)
   if not session.stopped_thread_id then return ' ▶ Running ', 'DapToolbarRunning' end
   local why = M.state.ensure_stop and 'on a failed ensure()' or REASONS[M.state.stop_reason or ''] or 'paused'
   local f = session.current_frame
-  local where = ''
-  if f then
+  local loc = ''
+  if f and where then
     local file = f.source and f.source.path and vim.fn.fnamemodify(f.source.path, ':t')
-    where = ' in ' .. (f.name or '?'):gsub('%(.*', '') .. (file and (' (%s:%d)'):format(file, f.line) or '')
+    loc = ' in ' .. (f.name or '?'):gsub('%(.*', '') .. (file and (' (%s:%d)'):format(file, f.line) or '')
   end
-  return ' ⏸ Paused ' .. why .. where .. ' ', 'DapToolbarPaused'
+  return ' ⏸ Paused ' .. why .. loc .. ' ', 'DapToolbarPaused'
 end
 
---- Tabline while debugging. Labels shrink to fit the width: "Step over F10" -> "Over F10" -> "F10".
+--- Tabline while debugging: the state, then the buttons usable now (paused: no Pause; running: no
+--- steps). It shrinks to fit: the location goes first, then "Step over F10" -> "Over F10" -> "F10".
 function M.toolbar()
   local ok, dap = pcall(require, 'dap')
   local session = ok and dap.session()
   if not session then return '' end
   local stopped = session.stopped_thread_id ~= nil
-  local state, state_hl = state_text(session)
   local cols = vim.o.columns
-  local function render(tier)
+  local function render(tier, where)
+    local state, state_hl = state_text(session, where)
     local out, width = { ('%%#%s#%s%%*'):format(state_hl, state) }, vim.fn.strdisplaywidth(state)
     if M.state.ensure_stop then
       local t = ' Ignore this ensure '
@@ -373,17 +376,17 @@ function M.toolbar()
       width = width + #t + 1
     end
     for _, b in ipairs(BUTTONS) do
-      local avail = b[5] == 'any' or (b[5] == 'stopped') == stopped
-      local label = tier == 1 and (b[2] .. ' ' .. b[4]) or tier == 2 and (b[3] .. ' ' .. b[4]) or b[4]
-      local hl = avail and 'DapToolbarButton' or 'DapToolbarOff'
-      out[#out + 1] = (' %%#%s#%%0@v:lua._debug_ui.%s@ %s %%X%%*'):format(hl, b[1], label)
-      width = width + vim.fn.strdisplaywidth(label) + 3
+      if b[5] == 'any' or (b[5] == 'stopped') == stopped then
+        local label = tier == 1 and (b[2] .. ' ' .. b[4]) or tier == 2 and (b[3] .. ' ' .. b[4]) or b[4]
+        out[#out + 1] = (' %%#DapToolbarButton#%%0@v:lua._debug_ui.%s@ %s %%X%%*'):format(b[1], label)
+        width = width + vim.fn.strdisplaywidth(label) + 3
+      end
     end
     return table.concat(out), width
   end
   local bar, width
-  for tier = 1, 3 do
-    bar, width = render(tier)
+  for _, try in ipairs({ { 1, true }, { 1, false }, { 2, true }, { 2, false }, { 3, true }, { 3, false } }) do
+    bar, width = render(try[1], try[2])
     if width <= cols then break end
   end
   -- the exception checkboxes when there is room (they are in the Breakpoints title as well)
