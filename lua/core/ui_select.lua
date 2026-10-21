@@ -45,7 +45,9 @@ function M.select(items, opts, on_choice)
     }),
     sorter = conf.generic_sorter(theme),
     previewer = false,
-    attach_mappings = function(bufnr)
+    attach_mappings = function(bufnr, map)
+      -- one Esc cancels (Telescope's first Esc only leaves insert mode in the prompt)
+      map('i', '<Esc>', actions.close)
       actions.select_default:replace(function()
         local e = state.get_selected_entry()
         actions.close(bufnr)
