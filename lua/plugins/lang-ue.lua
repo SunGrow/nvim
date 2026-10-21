@@ -242,7 +242,7 @@ if is_ue_project then
 
   if should_write then
     vim.fn.writefile(vim.split(clangd_config, '\n'), clangd_path)
-    vim.notify('Updated .clangd in ' .. project_root, vim.log.levels.INFO)
+    vim.schedule(function() vim.notify('Updated .clangd in ' .. project_root, vim.log.levels.INFO, { title = 'clangd' }) end)
   end
 
   -- An index built with UBT's -resource-dir has the wrong symbol for every function taking a
@@ -254,8 +254,10 @@ if is_ue_project then
   if not vim.uv.fs_stat(marker) then
     local index = cache .. '/index'
     if vim.uv.fs_stat(index) and #vim.lsp.get_clients({ name = 'clangd' }) > 0 then
-      vim.notify('clangd index needs a rebuild (wrong symbols for TArray/TMap parameters): restart Neovim',
-        vim.log.levels.WARN, { title = 'clangd' })
+      vim.schedule(function()
+        vim.notify('clangd index needs a rebuild (wrong symbols for TArray/TMap parameters): restart Neovim',
+          vim.log.levels.WARN, { title = 'clangd' })
+      end)
     else
       local ok = true
       if vim.uv.fs_stat(index) then
@@ -263,8 +265,10 @@ if is_ue_project then
         ok = vim.uv.fs_rename(index, old) ~= nil
         if ok then
           vim.system({ 'cmd.exe', '/c', 'rmdir', '/s', '/q', (old:gsub('/', '\\')) })
-          vim.notify('Rebuilding the clangd index (the old one had wrong symbols for TArray/TMap parameters); '
-            .. 'find usages fills in as it progresses', vim.log.levels.INFO, { title = 'clangd' })
+          vim.schedule(function() -- after startup: fidget shows it instead of a hit-enter prompt
+            vim.notify('Rebuilding the clangd index (the old one had wrong symbols for TArray/TMap parameters); '
+              .. 'find usages fills in as it progresses', vim.log.levels.INFO, { title = 'clangd' })
+          end)
         end
       end
       if ok then
@@ -397,6 +401,19 @@ return {
     },
     config = function(_, opts)
       require('UNL').setup(opts)
+      -- UNL.cmd.start is loaded (by UNL's plugin/ script) before setup creates the 'UNL' logger, so
+      -- it keeps the fallback logger, which print()s every INFO line ("INFO: Registering and
+      -- initializing project ...") on the command line at each start. Reload it now that the logger
+      -- exists, into the same table so earlier references see the new functions.
+      local old = package.loaded['UNL.cmd.start']
+      if type(old) == 'table' then
+        package.loaded['UNL.cmd.start'] = nil
+        local ok, new = pcall(require, 'UNL.cmd.start')
+        if ok and type(new) == 'table' then
+          for k, v in pairs(new) do old[k] = v end
+        end
+        package.loaded['UNL.cmd.start'] = old
+      end
       patch_unl_telescope_provider()
       patch_unl_startup_retry()
       patch_unl_paths()

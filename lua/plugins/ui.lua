@@ -50,6 +50,13 @@ return {
             cond = function() return package.loaded['core.clangd'] ~= nil end,
           },
           {
+            -- clangd's background index while it runs: "⚙ index 12% (14 threads)"; click for details
+            function() return require('core.clangd').index_text() end,
+            color = { fg = '#7dcfff' },
+            cond = function() return package.loaded['core.clangd'] ~= nil end,
+            on_click = function() require('core.clangd').index_details() end,
+          },
+          {
             function() return ue_project_name end,
             icon = '󰿅',
             color = { fg = '#9ece6a' },
@@ -90,20 +97,38 @@ return {
   },
 
   -- LSP progress spinner in top-right corner
+  -- and notifications: vim.notify goes to fidget's corner window instead of the command line, where a
+  -- message wider than the screen (or several lines) stops everything at "Press ENTER".
   {
     'j-hui/fidget.nvim',
-    event = 'LspAttach',
+    lazy = false, -- before the first notification
+    keys = {
+      { '<leader>un', function() require('fidget.notification').show_history() end, desc = 'Notification history' },
+    },
     opts = {
       progress = {
         display = {
           done_ttl = 3,
           progress_icon = { pattern = 'dots' },
         },
+        -- clangd's background index runs for minutes to hours: the statusline shows it instead
+        ignore = {
+          function(msg) return msg.lsp_client and msg.lsp_client.name == 'clangd' and msg.token == 'backgroundIndexProgress' end,
+        },
       },
       notification = {
         window = { winblend = 0 },
       },
     },
+    config = function(_, opts)
+      local fidget = require('fidget')
+      fidget.setup(opts)
+      -- vim.notify's `title` (used across this config) becomes fidget's heading
+      vim.notify = function(msg, level, o)
+        if o and o.title and not o.annote then o = vim.tbl_extend('keep', { annote = o.title }, o) end
+        return fidget.notify(msg, level, o)
+      end
+    end,
   },
 
   -- Keymap discoverability

@@ -145,6 +145,62 @@ function M.text()
   return SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1] .. ' clangd ' .. (st:match('^[^,]+') or st)
 end
 
+-- Background index progress (clangd's "backgroundIndexProgress" token, "12/966" messages): shown in
+-- the statusline rather than as a fidget item, which would cover code for the hours a UE index takes.
+local index -- { done, total, pct } while clangd indexes
+vim.api.nvim_create_autocmd('LspProgress', {
+  group = vim.api.nvim_create_augroup('core-clangd-index', { clear = true }),
+  callback = function(ev)
+    local p = ev.data.params
+    if p.token ~= 'backgroundIndexProgress' then return end
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+    if not client or client.name ~= 'clangd' then return end
+    if p.value.kind == 'end' then
+      index = nil
+    else
+      local done, total = (p.value.message or ''):match('(%d+)/(%d+)')
+      index = { done = tonumber(done), total = tonumber(total), pct = p.value.percentage }
+    end
+  end,
+})
+
+local function threads()
+  local cmd = (vim.lsp.config.clangd or {}).cmd or {}
+  for _, a in ipairs(cmd) do
+    local j = a:match('^%-j=(%d+)')
+    if j then return tonumber(j) end
+  end
+end
+
+--- Statusline: "⚙ index 12% · 14 threads" while clangd's background index works.
+function M.index_text()
+  if not index or not index.total or index.total == 0 then return '' end
+  local pct = index.pct or math.floor(index.done * 100 / index.total)
+  local j = threads()
+  return ('⚙ index %d%%'):format(pct) .. (j and (' · %d threads'):format(j) or '')
+end
+
+--- Statusline click: what the index is doing.
+function M.index_details()
+  local lines = {}
+  if index and index.total then
+    lines[#lines + 1] = ('Indexing %d of %d files queued in this session'):format(index.done or 0, index.total)
+  else
+    lines[#lines + 1] = 'clangd is not indexing'
+  end
+  local ok, ci = pcall(require, 'ue.clangd_index')
+  if ok and ci.rebuilding() then
+    local done, total = ci.coverage()
+    lines[#lines + 1] = ('Project index: %d of %d source files'):format(done, total)
+    local mode = ci.state.mode
+    lines[#lines + 1] = mode == 'shared' and 'Unreal is running: 4 background threads, more when it closes'
+      or mode == 'fast' and 'No Unreal running: 14 threads at normal priority' or ''
+    lines[#lines + 1] = 'Find Usages and overrides fill in as files are indexed'
+  end
+  vim.notify(table.concat(vim.tbl_filter(function(l) return l ~= '' end, lines), '\n'), vim.log.levels.INFO,
+    { title = 'clangd index' })
+end
+
 --- For tests and :lua inspection.
 function M.state()
   return { status = status, pending = pending, warm = warm }
