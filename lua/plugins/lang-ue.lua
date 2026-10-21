@@ -212,6 +212,14 @@ if is_ue_project then
     '  ParameterNames: Yes',
     '  DeducedTypes: Yes',
     '',
+    -- UHT .gen.cpp and other build outputs: each costs a full UnrealEd parse in the background index
+    -- (~45 s CPU) and only adds Z_Construct_* noise to symbol search. Opened files still work.
+    '---',
+    'If:',
+    '  PathMatch: Intermediate/.*',
+    'Index:',
+    '  Background: Skip',
+    '',
   }, '\n')
 
   local should_write = vim.fn.filereadable(clangd_path) == 0
@@ -221,7 +229,8 @@ if is_ue_project then
     local strips_required_forced_includes = existing:find('/FI*', 1, true) ~= nil
       or existing:find('-include]', 1, true) ~= nil
       or existing:find('-include,', 1, true) ~= nil
-    if managed_by_this_config and strips_required_forced_includes then
+    local indexes_intermediate = not existing:find('Background: Skip', 1, true)
+    if managed_by_this_config and (strips_required_forced_includes or indexes_intermediate) then
       should_write = true
     end
   end
