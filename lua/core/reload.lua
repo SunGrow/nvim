@@ -218,11 +218,16 @@ local function on_change(err, filename)
   M._timer:start(300, 0, vim.schedule_wrap(function()
     local files = pending
     pending = {}
-    -- skip files that did not really change (editors and git touch files without changing them)
+    -- skip files that did not really change (editors and git touch files without changing them). On
+    -- Windows libuv also reports reads (FILE_NOTIFY_CHANGE_LAST_ACCESS): lazy.nvim reading a spec or
+    -- python loading the debug adapter fired a bogus "Reloaded". A file not seen before counts as
+    -- changed only when it was written after the watcher started.
     for rel2 in pairs(files) do
       local st = vim.uv.fs_stat(root .. '/' .. rel2)
       local key = st and (st.size .. ':' .. st.mtime.sec .. ':' .. st.mtime.nsec)
-      if st and M._seen[rel2] == key then files[rel2] = nil else M._seen[rel2] = key end
+      local unchanged = st and (M._seen[rel2] == key or (M._seen[rel2] == nil and st.mtime.sec < M._started))
+      if unchanged then files[rel2] = nil end
+      M._seen[rel2] = key
     end
     if next(files) then M.apply(files) end
   end))
@@ -232,6 +237,7 @@ function M.setup()
   if #vim.api.nvim_list_uis() == 0 and not vim.g.config_reload_headless then return end -- not in scripts
   if M._watch then M._watch:stop() end
   M._seen = M._seen or {}
+  M._started = M._started or os.time()
   M._timer = M._timer or vim.uv.new_timer()
   M._watch = vim.uv.new_fs_event()
   local ok, err = M._watch:start(root, { recursive = true }, on_change)

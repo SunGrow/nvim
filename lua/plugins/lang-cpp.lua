@@ -104,40 +104,61 @@ return {
       dap.listeners.before.event_exited.dapui_config = function() dapui.close() end
     end,
     -- stylua: ignore
+    -- F-keys as in Rider's VS Code keymap; the Space d menu names the F-key that does the same.
+    -- The toolbar, `?` and F1 list them from core/debug_ui.lua M.KEYS: keep that table in step.
     keys = {
-      { '<leader>db', function() require('dap').toggle_breakpoint() end, desc = 'Toggle breakpoint' },
-      { '<leader>dB', function() require('dap').set_breakpoint(vim.fn.input('Breakpoint condition: ')) end, desc = 'Conditional breakpoint' },
-      { '<leader>dc', function() require('dap').continue() end, desc = 'Continue / Start' },
-      { '<leader>di', function() require('dap').step_into() end, desc = 'Step into' },
-      { '<leader>do', function() require('dap').step_over() end, desc = 'Step over' },
-      { '<leader>dO', function() require('dap').step_out() end, desc = 'Step out' },
-      { '<leader>dr', function() require('dap').repl.toggle() end, desc = 'Toggle REPL' },
-      { '<leader>dl', function() require('dap').run_last() end, desc = 'Run last' },
-      { '<leader>dt', function() require('dap').terminate() end, desc = 'Terminate' },
-      { '<leader>du', function() require('dapui').toggle() end, desc = 'Toggle DAP UI' },
-      { '<leader>de', function() require('dapui').eval() end, desc = 'Eval expression', mode = { 'n', 'v' } },
-      { '<leader>dh', function() require('dap.ui.widgets').hover() end, desc = 'Hover value under cursor', mode = { 'n', 'v' } },
-      { '<leader>dk', function() require('dap').up() end, desc = 'Frame up (caller)' },
-      { '<leader>dj', function() require('dap').down() end, desc = 'Frame down (callee)' },
+      { '<leader>db', function() require('dap').toggle_breakpoint() end, desc = 'Breakpoint on this line (F9)' },
+      { '<leader>dB', function()
+        vim.ui.input({ prompt = 'Stop only when (e.g. i == 3): ' }, function(cond)
+          if cond and cond ~= '' then require('dap').set_breakpoint(cond) end
+        end)
+      end, desc = 'Breakpoint with a condition' },
+      { '<leader>dL', function() require('dap').list_breakpoints(true) end, desc = 'List all breakpoints' },
+      { '<leader>dC', function()
+        require('dap').clear_breakpoints()
+        vim.notify('All breakpoints deleted', vim.log.levels.INFO, { title = 'Debug' })
+      end, desc = 'Delete all breakpoints' },
+      { '<leader>dc', function() require('dap').continue() end, desc = 'Continue / start (F5)' },
+      { '<leader>dp', function() require('dap').pause() end, desc = 'Pause (F6)' },
+      { '<leader>do', function() require('dap').step_over() end, desc = 'Step over (F10)' },
+      { '<leader>di', function() require('dap').step_into() end, desc = 'Step into (F11)' },
+      { '<leader>dO', function() require('dap').step_out() end, desc = 'Step out (Shift+F11)' },
+      { '<leader>dg', function() require('core.debug_ui').run_to_cursor() end, desc = 'Run to cursor (Ctrl+F10)' },
+      { '<leader>dt', function() require('core.debug_ui').stop() end, desc = 'Stop (Shift+F5)' },
+      { '<leader>dR', function() require('core.debug_ui').restart() end, desc = 'Restart (Ctrl+Shift+F5)' },
+      { '<leader>dl', function() require('dap').run_last() end, desc = 'Debug the last program again' },
+      { '<leader>dr', function() require('dap').repl.toggle() end, desc = 'Debug console' },
+      { '<leader>du', function() require('dapui').toggle() end, desc = 'Show / hide debugger panels' },
+      { '<leader>de', function() require('dapui').eval() end, desc = 'Evaluate expression (or selection)', mode = { 'n', 'v' } },
+      { '<leader>dh', function() require('dap.ui.widgets').hover() end, desc = 'Value under the cursor', mode = { 'n', 'v' } },
+      { '<leader>dw', function()
+        local expr = vim.fn.mode():match('[vV]') and table.concat(vim.fn.getregion(vim.fn.getpos('v'), vim.fn.getpos('.')), ' ')
+          or vim.fn.expand('<cexpr>')
+        require('dapui').elements.watches.add(expr)
+        vim.notify('Watching ' .. expr, vim.log.levels.INFO, { title = 'Debug' })
+      end, desc = 'Add to Watches (word / selection)', mode = { 'n', 'v' } },
+      { '<leader>dk', function() require('dap').up() end, desc = 'Call stack: go to the caller' },
+      { '<leader>dj', function() require('dap').down() end, desc = 'Call stack: back down' },
       { '<leader>dT', function()
         local w = require('dap.ui.widgets')
         w.centered_float(w.threads)
       end, desc = 'Threads (all suspended threads and their stacks)' },
-      { '<leader>dx', function() require('core.debug_ui').pick_filters() end, desc = 'Exception breakpoints (ensure, C++ throw, AV)' },
-      { '<leader>dE', function() require('core.debug_ui').toggle_filter('ensure') end, desc = 'Toggle suspend on ensure' },
-      { '<leader>dI', function() require('core.debug_ui').ignore_current_ensure() end, desc = 'Ignore this ensure (others still suspend)' },
+      { '<leader>dx', function() require('core.debug_ui').pick_filters() end, desc = 'Exceptions: ensure, C++ throw, AV' },
+      { '<leader>dE', function() require('core.debug_ui').toggle_filter('ensure') end, desc = 'Stop on failed ensure() on / off' },
+      { '<leader>dI', function() require('core.debug_ui').ignore_current_ensure() end, desc = 'Ignore this ensure (others still stop)' },
+      { '<leader>d?', function() require('core.debug_ui').help() end, desc = 'All debugger keys' },
       -- UE projects: with no session, F5 builds and debugs the selected run configuration (lua/ue/run.lua)
       { '<F5>', function()
         local dap = require('dap')
         if not dap.session() and require('core.context').is_ue then return require('ue.run').debug() end
         dap.continue()
       end, desc = 'Debug: Start / Continue' },
-      { '<S-F5>', function()
-        if require('core.context').is_ue then return require('ue.run').stop() end
-        require('dap').terminate()
-      end, desc = 'Debug: Stop' },
+      { '<F6>', function() require('dap').pause() end, desc = 'Debug: Pause' },
+      { '<S-F5>', function() require('core.debug_ui').stop() end, desc = 'Debug: Stop' },
+      { '<C-S-F5>', function() require('core.debug_ui').restart() end, desc = 'Debug: Restart' },
       { '<F9>', function() require('dap').toggle_breakpoint() end, desc = 'Debug: Toggle breakpoint' },
       { '<F10>', function() require('dap').step_over() end, desc = 'Debug: Step over' },
+      { '<C-F10>', function() require('core.debug_ui').run_to_cursor() end, desc = 'Debug: Run to cursor' },
       { '<F11>', function() require('dap').step_into() end, desc = 'Debug: Step into' },
       { '<S-F11>', function() require('dap').step_out() end, desc = 'Debug: Step out' },
     },

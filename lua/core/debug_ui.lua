@@ -48,8 +48,7 @@ end
 
 --- Repaints the toolbar and the panel title bars now (they show the exception settings).
 local function repaint()
-  local ok, controls = pcall(require, 'dapui.controls')
-  if ok then controls.refresh_control_panel() end
+  vim.cmd.redrawtabline()
   vim.cmd.redrawstatus({ bang = true })
   pcall(vim.api.nvim__redraw, { winbar = true, flush = true })
 end
@@ -151,65 +150,89 @@ local function count_breakpoints()
   return n
 end
 
-local function filters_text()
+--- Exception settings as clickable checkboxes ("[x] ensure  [ ] C++ throw  [x] AV  2 ignored").
+local function filter_boxes(labels)
   local parts = {}
   for _, f in ipairs(M.FILTERS) do
-    parts[#parts + 1] = f.short .. (load()[f.id] and ' ✓' or ' ✗')
+    local on = load()[f.id]
+    parts[#parts + 1] = ('%%#%s#%%0@v:lua._debug_ui.%s@%s %s%%X%%*'):format(
+      on and 'DapUIDebugOnBox' or 'DapUIDebugOffBox', f.id, on and '[x]' or '[ ]', labels and f.label or f.short)
   end
-  if #ignored > 0 then parts[#parts + 1] = ('%d ignored'):format(#ignored) end
+  if #ignored > 0 then parts[#parts + 1] = ('%%0@v:lua._debug_ui.pick@%d ignored%%X'):format(#ignored) end
   return table.concat(parts, '  ')
 end
 
--- Short enough for a 60-column panel; %< drops the tail first when a panel is narrower.
+--- Capabilities of the running debug adapter (dbgeng-dap: no "set variable", no logpoints).
+local function caps()
+  local s = package.loaded['dap'] and require('dap').session()
+  return s and s.capabilities or {}
+end
+
+-- Panel title bars: what the panel is and how to use it. Short enough for a 45-column panel; %<
+-- drops the tail first when a panel is narrower.
 local TITLES = {
   dapui_breakpoints = function()
-    return ('%%#Title# Breakpoints (%d) %%*%%<  %s'):format(count_breakpoints(), filters_text())
+    return ('%%#Title# Breakpoints (%d) %%*%%<  %s'):format(count_breakpoints(), filter_boxes(false))
   end,
-  dapui_scopes = function() return '%#Title# Variables %*%<  ⏎ expand · e edit · ? keys' end,
+  dapui_scopes = function()
+    return '%#Title# Variables %*%<  ⏎ expand' .. (caps().supportsSetVariable and ' · e edit' or '') .. ' · ? keys'
+  end,
   dapui_stacks = function() return '%#Title# Call stack %*%<  click/⏎ open frame · ? keys' end,
-  dapui_watches = function() return '%#Title# Watches %*%<  ⏎ add · e edit · d delete · ? keys' end,
+  dapui_watches = function() return '%#Title# Watches %*%<  i add · d delete · ? keys' end,
+  ['dap-repl'] = function() return '%#Title# Debug console %*%<  type an expression, ⏎ evaluates · ? keys' end,
 }
 
-local HELP = {
-  'Debugger keys',
-  '',
-  '  F5           start (build + debug) / continue',
-  '  Shift+F5     stop',
-  '  F10          step over',
-  '  F11          step into',
-  '  Shift+F11    step out',
-  '  F9           toggle breakpoint     <leader>dB  conditional breakpoint',
-  '',
-  '  Call stack   click / Enter: go to frame   t: show/hide library frames',
-  '               <leader>dk / <leader>dj: frame up (caller) / down',
-  '  Threads      <leader>dT: all threads and their stacks',
-  '  Breakpoints  click / Enter: go to   t: enable/disable   d: delete',
-  '  Exceptions   <leader>dx: pick (ensure, C++ throw, access violation, ignored ensures)',
-  '               <leader>dE: toggle Suspend on ensure',
-  '               <leader>dI: ignore this ensure (stopped on one; others still suspend)',
-  '  Variables    Enter / double-click: expand   e: edit   r: send to REPL',
-  '  Evaluate     <leader>de: expression (also visual)   <leader>dh: value under cursor',
-  '  Panels       <leader>du: show/hide   <leader>dr: REPL',
-  '',
-  'q / Esc closes this window',
+-- Every debugger key, in the order a newcomer needs them: the toolbar, `?` and F1 are made from this.
+-- key: as shown; lhs: the mapping (checked by the F1 sheet); toolbar: button id when it has one.
+M.KEYS = {
+  { key = 'F5', lhs = '<F5>', desc = 'Start debugging (builds first) / Continue' },
+  { key = 'F6', lhs = '<F6>', desc = 'Pause' },
+  { key = 'Shift+F5', lhs = '<S-F5>', desc = 'Stop' },
+  { key = 'Ctrl+Shift+F5', lhs = '<C-S-F5>', desc = 'Restart (builds again)' },
+  { key = 'F10', lhs = '<F10>', desc = 'Step over' },
+  { key = 'F11', lhs = '<F11>', desc = 'Step into' },
+  { key = 'Shift+F11', lhs = '<S-F11>', desc = 'Step out' },
+  { key = 'Ctrl+F10', lhs = '<C-F10>', desc = 'Run to cursor' },
+  {},
+  { key = 'F9', lhs = '<F9>', desc = 'Breakpoint on this line (on / off)' },
+  { key = 'Space dB', lhs = '<leader>dB', desc = 'Breakpoint with a condition (e.g. i == 3)' },
+  { key = 'Space dL', lhs = '<leader>dL', desc = 'List all breakpoints' },
+  { key = 'Space dC', lhs = '<leader>dC', desc = 'Delete all breakpoints' },
+  { key = 'Space dx', lhs = '<leader>dx', desc = 'Exceptions: ensure, C++ throw, access violation' },
+  { key = 'Space dI', lhs = '<leader>dI', desc = 'Ignore this ensure (stopped on one; others still stop)' },
+  {},
+  { key = 'Space dh', lhs = '<leader>dh', desc = 'Value of the variable under the cursor' },
+  { key = 'Space de', lhs = '<leader>de', desc = 'Evaluate an expression (or the selection)' },
+  { key = 'Space dw', lhs = '<leader>dw', desc = 'Add the word / selection to Watches' },
+  { key = 'Space dk / dj', lhs = '<leader>dk', desc = 'Go to the caller / back down the call stack' },
+  { key = 'Space dT', lhs = '<leader>dT', desc = 'All threads and their call stacks' },
+  { key = 'Space du', lhs = '<leader>du', desc = 'Show / hide the debugger panels' },
 }
 
---- Floating list of the debugger keys (`?` in any debugger panel).
-function M.help()
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, HELP)
-  vim.bo[buf].modifiable = false
-  local width = 0
-  for _, l in ipairs(HELP) do width = math.max(width, vim.fn.strdisplaywidth(l)) end
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative = 'editor', style = 'minimal', border = 'rounded', title = ' Debug ', title_pos = 'center',
-    width = width + 2, height = #HELP,
-    row = math.floor((vim.o.lines - #HELP) / 2), col = math.floor((vim.o.columns - width) / 2),
-  })
-  vim.api.nvim_buf_add_highlight(buf, -1, 'Title', 0, 0, -1)
-  for _, key in ipairs({ 'q', '<Esc>' }) do
-    vim.keymap.set('n', key, function() vim.api.nvim_win_close(win, true) end, { buffer = buf, nowait = true })
+local PANEL_HELP = {
+  'In the panels',
+  '  Call stack    click / ⏎ go to the frame · t show/hide library frames',
+  '  Breakpoints   click / ⏎ go to it · t enable/disable · d delete · click [x] to toggle an exception',
+  '  Variables     ⏎ / double-click expand · r copy to the console',
+  '  Watches       i type an expression, ⏎ adds it · d delete · ⏎ expand',
+  '  Console       type an expression or a debugger command, ⏎ runs it',
+}
+
+--- Lines for the debugger key list (`?` in the panels, <leader>d?, and the F1 sheet).
+function M.help_lines()
+  local lines = {}
+  for _, k in ipairs(M.KEYS) do
+    lines[#lines + 1] = k.key and ('  %-15s %s'):format(k.key, k.desc) or ''
   end
+  lines[#lines + 1] = ''
+  vim.list_extend(lines, PANEL_HELP)
+  if caps().supportsSetVariable then lines[#lines + 1] = '  Variables     e edit a value' end
+  return lines
+end
+
+--- Floating list of the debugger keys (`?` in any debugger panel, <leader>d?).
+function M.help()
+  require('core.keyhelp').float('Debugger keys', M.help_lines())
 end
 
 --- Winbar text for a dap-ui panel (evaluated on every redraw).
@@ -259,14 +282,8 @@ function M.dapui_opts()
         position = 'bottom',
       },
     },
-    controls = {
-      enabled = true,
-      element = 'repl',
-      icons = {
-        pause = '⏸', play = '▶', step_into = '↓', step_over = '↷', step_out = '↑',
-        step_back = '↶', run_last = '↻', terminate = '■', disconnect = '⏏',
-      },
-    },
+    -- the toolbar is the tabline while debugging (M.toolbar)
+    controls = { enabled = false },
   }
 end
 
@@ -290,39 +307,133 @@ function M.relayout()
 end
 
 -- toolbar -----------------------------------------------------------------------------------------
--- dap-ui's controls (▶ ↓ ↷ ↑ ...) get the exception settings as clickable checkboxes, like Rider's
--- "Suspend on ensure" toggle next to its debugger buttons.
+-- While a session runs, the tabline (top row, whole width) is the debugger toolbar, like Rider's: what
+-- the program is doing, then named buttons with their keys (click or press the key), then the exception
+-- checkboxes. dap-ui's own controls (bare ▶ ↓ ↷ ↑ ↶ ↻ ■ ⏏ icons in the console title, two of them not
+-- supported by dbgeng-dap) are off.
 _G._debug_ui = {}
 for _, f in ipairs(M.FILTERS) do
   _G._debug_ui[f.id] = function() M.toggle_filter(f.id) end
 end
-
 _G._debug_ui.ignore_ensure = function() M.ignore_current_ensure() end
 _G._debug_ui.pick = function() M.pick_filters() end
+_G._debug_ui.help = function() M.help() end
+_G._debug_ui.continue = function() require('dap').continue() end
+_G._debug_ui.pause = function() require('dap').pause() end
+_G._debug_ui.step_over = function() require('dap').step_over() end
+_G._debug_ui.step_into = function() require('dap').step_into() end
+_G._debug_ui.step_out = function() require('dap').step_out() end
+_G._debug_ui.run_to_cursor = function() M.run_to_cursor() end
+_G._debug_ui.restart = function() M.restart() end
+_G._debug_ui.stop = function() M.stop() end
 
-function M.toolbar_checkboxes()
-  local parts = {}
-  if M.state.ensure_stop then
-    parts[#parts + 1] = '%#DapUIDebugIgnoreBtn#%0@v:lua._debug_ui.ignore_ensure@ Ignore this ensure %X%*'
+-- id, name, short name, key, available when: 'stopped' | 'running' | 'any'
+local BUTTONS = {
+  { 'continue', 'Continue', 'Continue', 'F5', 'stopped' },
+  { 'pause', 'Pause', 'Pause', 'F6', 'running' },
+  { 'step_over', 'Step over', 'Over', 'F10', 'stopped' },
+  { 'step_into', 'Step into', 'Into', 'F11', 'stopped' },
+  { 'step_out', 'Step out', 'Out', 'Shift+F11', 'stopped' },
+  { 'run_to_cursor', 'Run to cursor', 'To cursor', 'Ctrl+F10', 'stopped' },
+  { 'restart', 'Restart', 'Restart', 'Ctrl+Shift+F5', 'any' },
+  { 'stop', 'Stop', 'Stop', 'Shift+F5', 'any' },
+  { 'help', 'All keys', 'Keys', '?', 'any' },
+}
+
+local REASONS = { breakpoint = 'at a breakpoint', step = 'after a step', pause = 'paused by you',
+  entry = 'at the program start', exception = 'on an exception', ['function breakpoint'] = 'at a breakpoint',
+  goto = 'at the cursor' }
+
+--- "Paused at a breakpoint in add_points (demo.c:8)" / "Running"; plain text and highlight group.
+local function state_text(session)
+  if not session.stopped_thread_id then return ' ▶ Running ', 'DapToolbarRunning' end
+  local why = M.state.ensure_stop and 'on a failed ensure()' or REASONS[M.state.stop_reason or ''] or 'paused'
+  local f = session.current_frame
+  local where = ''
+  if f then
+    local file = f.source and f.source.path and vim.fn.fnamemodify(f.source.path, ':t')
+    where = ' in ' .. (f.name or '?'):gsub('%(.*', '') .. (file and (' (%s:%d)'):format(file, f.line) or '')
   end
-  for _, f in ipairs(M.FILTERS) do
-    local on = load()[f.id]
-    parts[#parts + 1] = ('%%#%s#%%0@v:lua._debug_ui.%s@%s %s%%X%%*'):format(
-      on and 'DapUIDebugOnBox' or 'DapUIDebugOffBox', f.id, on and '[x]' or '[ ]',
-      f.id == 'ensure' and 'Suspend on ensure' or f.short)
-  end
-  if #ignored > 0 then
-    parts[#parts + 1] = ('%%0@v:lua._debug_ui.pick@%d ignored%%X'):format(#ignored)
-  end
-  return '   │  ' .. table.concat(parts, '   ') .. '   │  ? keys'
+  return ' ⏸ Paused ' .. why .. where .. ' ', 'DapToolbarPaused'
 end
 
-local function hook_controls()
-  local ok, controls = pcall(require, 'dapui.controls')
-  if not ok or controls._debug_ui_hooked then return end
-  controls._debug_ui_hooked = true
-  local orig = controls.controls
-  controls.controls = function(is_active) return orig(is_active) .. M.toolbar_checkboxes() end
+--- Tabline while debugging. Labels shrink to fit the width: "Step over F10" -> "Over F10" -> "F10".
+function M.toolbar()
+  local ok, dap = pcall(require, 'dap')
+  local session = ok and dap.session()
+  if not session then return '' end
+  local stopped = session.stopped_thread_id ~= nil
+  local state, state_hl = state_text(session)
+  local cols = vim.o.columns
+  local function render(tier)
+    local out, width = { ('%%#%s#%s%%*'):format(state_hl, state) }, vim.fn.strdisplaywidth(state)
+    if M.state.ensure_stop then
+      local t = ' Ignore this ensure '
+      out[#out + 1] = ' %#DapUIDebugIgnoreBtn#%0@v:lua._debug_ui.ignore_ensure@' .. t .. '%X%*'
+      width = width + #t + 1
+    end
+    for _, b in ipairs(BUTTONS) do
+      local avail = b[5] == 'any' or (b[5] == 'stopped') == stopped
+      local label = tier == 1 and (b[2] .. ' ' .. b[4]) or tier == 2 and (b[3] .. ' ' .. b[4]) or b[4]
+      local hl = avail and 'DapToolbarButton' or 'DapToolbarOff'
+      out[#out + 1] = (' %%#%s#%%0@v:lua._debug_ui.%s@ %s %%X%%*'):format(hl, b[1], label)
+      width = width + vim.fn.strdisplaywidth(label) + 3
+    end
+    return table.concat(out), width
+  end
+  local bar, width
+  for tier = 1, 3 do
+    bar, width = render(tier)
+    if width <= cols then break end
+  end
+  -- the exception checkboxes when there is room (they are in the Breakpoints title as well)
+  local boxes = filter_boxes(true)
+  local boxes_width = vim.fn.strdisplaywidth(vim.api.nvim_eval_statusline(boxes, { use_tabline = true }).str)
+  if width + boxes_width + 4 <= cols then
+    bar = bar .. '%#TabLineFill#%=' .. boxes .. ' '
+  else
+    bar = bar .. '%#TabLineFill#'
+  end
+  return bar
+end
+
+local function show_toolbar(on)
+  if on and not M.state.toolbar then
+    M.state.toolbar = { showtabline = vim.o.showtabline, tabline = vim.o.tabline }
+    vim.o.tabline = "%!v:lua.require'core.debug_ui'.toolbar()"
+    vim.o.showtabline = 2
+  elseif not on and M.state.toolbar then
+    vim.o.showtabline = M.state.toolbar.showtabline
+    vim.o.tabline = M.state.toolbar.tabline
+    M.state.toolbar = nil
+  end
+  vim.cmd.redrawtabline()
+end
+
+function M.run_to_cursor()
+  local dap = require('dap')
+  if not (dap.session() and dap.session().stopped_thread_id) then
+    return vim.notify('Run to cursor: the program is not paused', vim.log.levels.WARN, { title = 'Debug' })
+  end
+  M.state.to_cursor = true
+  dap.run_to_cursor()
+end
+
+function M.stop()
+  if require('core.context').is_ue then return require('ue.run').stop() end
+  require('dap').terminate()
+end
+
+--- Restart: stop, then start the same thing again (UE: builds the selected configuration first).
+function M.restart()
+  local dap = require('dap')
+  local ue = require('core.context').is_ue
+  if not dap.session() then
+    if ue then return require('ue.run').debug() end
+    return dap.run_last()
+  end
+  if not ue then return dap.restart() end
+  dap.terminate({ on_done = function() vim.schedule(function() require('ue.run').debug() end) end })
 end
 
 -- signs and title-bar autocmds -------------------------------------------------------------------
@@ -338,6 +449,10 @@ function M.setup()
     vim.api.nvim_set_hl(0, 'DapUIDebugOnBox', { default = true, link = 'DiagnosticOk' })
     vim.api.nvim_set_hl(0, 'DapUIDebugOffBox', { default = true, link = 'Comment' })
     vim.api.nvim_set_hl(0, 'DapUIDebugIgnoreBtn', { default = true, link = 'DiffChange' })
+    vim.api.nvim_set_hl(0, 'DapToolbarPaused', { default = true, link = 'DiffChange' })
+    vim.api.nvim_set_hl(0, 'DapToolbarRunning', { default = true, link = 'DiffAdd' })
+    vim.api.nvim_set_hl(0, 'DapToolbarButton', { default = true, link = 'TabLineSel' })
+    vim.api.nvim_set_hl(0, 'DapToolbarOff', { default = true, link = 'TabLine' })
   end
   hl_defaults()
   local signs = {
@@ -358,11 +473,25 @@ function M.setup()
 
   local dap = require('dap')
   dap.defaults.dbgeng.exception_breakpoints = filter_list()
-  hook_controls()
-  dap.listeners.after.event_initialized['debug_ui'] = function(session) send_ignored(session) end
+  dap.listeners.after.event_initialized['debug_ui'] = function(session)
+    send_ignored(session)
+    vim.schedule(function() show_toolbar(true) end)
+  end
   dap.listeners.after.event_stopped['debug_ui'] = function(_, body)
     M.state.ensure_stop = body ~= nil and body.description == 'ensure() failed' -- dbgeng-dap's ensure stop
+    -- run to cursor stops on a temporary breakpoint: say "at the cursor"
+    M.state.stop_reason = M.state.to_cursor and 'goto' or (body and body.reason)
+    M.state.to_cursor = false
     vim.schedule(repaint)
+  end
+  -- the toolbar's "in add_points (demo.c:8)" follows the selected frame
+  dap.listeners.after.stackTrace['debug_ui_toolbar'] = function() vim.schedule(repaint) end
+  for _, ev in ipairs({ 'event_terminated', 'event_exited', 'disconnect' }) do
+    dap.listeners.after[ev]['debug_ui_toolbar'] = function()
+      vim.schedule(function()
+        if not dap.session() then show_toolbar(false) end
+      end)
+    end
   end
   -- clangd needs 40-50 s for a UE file's first parse: start it for the call stack's project files when the
   -- debugger stops, so clicking a frame shows a parsed file (nearest frames first, top frame is opened anyway)

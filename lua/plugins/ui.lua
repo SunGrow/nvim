@@ -83,6 +83,13 @@ return {
         },
         lualine_x = {
           {
+            -- where to start when you do not know what to press (lua/core/keyhelp.lua)
+            function() return 'F1 keys' end,
+            icon = '⌨',
+            color = { fg = '#7aa2f7' },
+            on_click = function() require('core.keyhelp').show() end,
+          },
+          {
             function() return ram_mb .. 'MB' end,
             icon = '',
             color = { fg = '#e0af68' },

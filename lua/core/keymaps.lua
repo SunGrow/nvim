@@ -66,6 +66,12 @@ end, { desc = 'Find usages' })
 
 map('n', '<leader>uh', function() require('core.code').toggle_hints() end, { desc = 'Toggle inline hints' })
 
+-- F1 — the IDE keys on one screen (lua/core/keyhelp.lua); Vim's own help stays on :help
+map({ 'n', 'i' }, '<F1>', function()
+  vim.cmd.stopinsert()
+  require('core.keyhelp').show()
+end, { desc = 'Keys: what to press for what' })
+
 -- Built-in keymaps NOT overridden (Neovim 0.11 defaults):
 --
 -- LSP (global):
