@@ -163,7 +163,8 @@ Measured on 8 V2 files at `-j=8` with RAM free: normal priority 3.3 files/min, b
 The same repository is the WSL config: `~/.config/nvim` in WSL is a clone, updated with `git pull --ff-only /mnt/d/Development/projects/utilities/ed/nvim master` (add `-c safe.directory=...` for the /mnt/d repo). `lazy-lock.json` is gitignored, so each side keeps its own plugin versions.
 - WSL runs Neovim 0.12-dev, Windows 0.11. nvim-treesitter's branch follows the version (`lua/plugins/treesitter.lua`): `main` (the rewrite; `install()` + `vim.treesitter.start`, needs the `tree-sitter` CLI and a C compiler) on 0.12, the archived `master` on 0.11.
 - clangd: the distribution's `clangd` on PATH (Ubuntu clangd 21); Mason is not asked for it on Linux, and `lsp.lua` enables it itself (mason-lspconfig's `automatic_enable` covers only Mason-installed servers).
-- codelldb (debugging) is a zip: Mason needs `unzip` (`sudo apt install unzip`); until then it is not requested, so no install error at each start.
+- codelldb (debugging) is a zip: Mason needs `unzip` (`sudo apt install unzip`); until then it is not requested, so no install error at each start. Installed in WSL (Mason codelldb).
+- Debugging outside Unreal (codelldb): F5 → pick "Launch executable" → the prompt offers the program debugged last in this folder (`stdpath('state')/dap-programs.json`), else the newest executable under it; Enter takes it, Esc cancels. codelldb's console is in lldb "commands" mode (`?expr` evaluates); the console title says so. dbgeng's exception checkboxes are shown only in dbgeng sessions.
 - Unreal mode (`core/context.lua`) is Windows-only: a `.uproject` folder opened from WSL is a plain C++ project.
 - Config hot reload watches each folder on Linux (inotify ignores the recursive flag).
 - Clipboard: Neovim picks xclip (or win32yank.exe from the Windows Neovim) for `unnamedplus`.
