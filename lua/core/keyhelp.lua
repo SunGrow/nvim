@@ -131,33 +131,26 @@ local function layout(blocks, max_cols)
   end
   colw = colw + 3
   local ncols = math.max(1, math.min(3, math.floor(max_cols / colw)))
-  -- split the sections, in order, into ncols runs with the shortest tallest column (few sections:
-  -- try every split)
-  local n = #blocks
-  local best, best_cuts
-  local function height(i, j)
-    local h = 0
-    for k = i, j do h = h + #blocks[k].lines + 1 end
-    return h
+  -- pack the sections into columns of about equal height (largest first, into the shortest column;
+  -- the Debug section alone is a third of the sheet), then keep each column in reading order
+  ncols = math.min(ncols, #blocks)
+  local order = {}
+  for i = 1, #blocks do order[i] = i end
+  table.sort(order, function(a, b) return #blocks[a].lines > #blocks[b].lines end)
+  local cols_idx, heights = {}, {}
+  for c = 1, ncols do cols_idx[c], heights[c] = {}, 0 end
+  for _, i in ipairs(order) do
+    local c = 1
+    for k = 2, ncols do if heights[k] < heights[c] then c = k end end
+    table.insert(cols_idx[c], i)
+    heights[c] = heights[c] + #blocks[i].lines + 1
   end
-  local function search(start, left, cuts, worst)
-    if left == 1 then
-      local w = math.max(worst, height(start, n))
-      if not best or w < best then best, best_cuts = w, vim.list_extend(vim.deepcopy(cuts), { n }) end
-      return
-    end
-    for stop = start, n - left + 1 do
-      search(stop + 1, left - 1, vim.list_extend(vim.deepcopy(cuts), { stop }), math.max(worst, height(start, stop)))
-    end
-  end
-  ncols = math.min(ncols, n)
-  search(1, ncols, {}, 0)
-  local columns, first = {}, 1
-  for _, stop in ipairs(best_cuts) do
-    local col = {}
-    for k = first, stop do col[#col + 1] = blocks[k] end
-    columns[#columns + 1] = col
-    first = stop + 1
+  for c = 1, ncols do table.sort(cols_idx[c]) end
+  table.sort(cols_idx, function(a, b) return (a[1] or math.huge) < (b[1] or math.huge) end)
+  local columns = {}
+  for c, idx in ipairs(cols_idx) do
+    columns[c] = {}
+    for _, i in ipairs(idx) do table.insert(columns[c], blocks[i]) end
   end
   local lines, hls = {}, {}
   for c, col in ipairs(columns) do
