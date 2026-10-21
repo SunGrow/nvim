@@ -138,6 +138,8 @@ function M.add_pch()
 end
 
 --- Restarts the project clangd so it reloads the database (open C++ buffers re-attach).
+--- clangd finishes the AST work it has started before it exits (up to ~20 s); a forced kill exits
+--- with code 1, which Neovim reports as an error, so the force is only a last resort.
 local function restart_clangd()
   local clients = vim.lsp.get_clients({ name = 'clangd' })
   if #clients == 0 then return end
@@ -147,7 +149,7 @@ local function restart_clangd()
   timer:start(100, 100, vim.schedule_wrap(function()
     waited = waited + 100
     local left = vim.lsp.get_clients({ name = 'clangd' })
-    if #left > 0 and waited < 5000 then return end
+    if #left > 0 and waited < 30000 then return end
     timer:stop()
     timer:close()
     for _, c in ipairs(left) do c:stop(true) end
