@@ -7,6 +7,22 @@ local fzf_built = vim.uv.fs_stat(fzf_dir .. 'libfzf.dll') ~= nil
   or vim.uv.fs_stat(fzf_dir .. 'libfzf.dylib') ~= nil
 local use_fzf = fzf_built or vim.fn.executable('make') == 1
 
+-- UE projects search through UEP (modules, engine scopes), but UEP needs UNL's index. On a
+-- project's first open UNL builds it in the background (minutes); until then UEP fails with
+-- "No components in DB" and an ENTER prompt. Ask the index first and fall back to plain Telescope.
+local function ue_or_plain(uep_cmd, plain)
+  if not require('core.context').is_ue then return plain() end
+  local ok, remote = pcall(require, 'UNL.db.remote')
+  if not ok then return plain() end
+  remote.get_components(vim.schedule_wrap(function(components, err)
+    if not err and type(components) == 'table' and #components > 0 then
+      return vim.cmd(uep_cmd)
+    end
+    vim.notify('UE index not ready yet: plain search', vim.log.levels.INFO, { title = 'UEP' })
+    plain()
+  end))
+end
+
 return {
   'nvim-telescope/telescope.nvim',
   branch = '0.1.x',
@@ -25,18 +41,10 @@ return {
   },
   keys = {
     { '<leader>ff', function()
-        if require('core.context').is_ue then
-          vim.cmd('UEP files')
-        else
-          require('telescope.builtin').find_files()
-        end
+        ue_or_plain('UEP files', function() require('telescope.builtin').find_files() end)
       end, desc = 'Find files' },
     { '<leader>fg', function()
-        if require('core.context').is_ue then
-          vim.cmd('UEP grep')
-        else
-          require('telescope.builtin').live_grep()
-        end
+        ue_or_plain('UEP grep', function() require('telescope.builtin').live_grep() end)
       end, desc = 'Live grep' },
     { '<leader>fb', function() require('telescope.builtin').buffers() end, desc = 'Buffers' },
     { '<leader>fh', function() require('telescope.builtin').help_tags() end, desc = 'Help tags' },
