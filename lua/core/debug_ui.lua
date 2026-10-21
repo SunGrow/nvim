@@ -81,7 +81,7 @@ local function apply()
 end
 
 -- Ignored ensures ------------------------------------------------------------------------------
-local ensure_stop = false -- the session is stopped on a failed ensure
+M.state = { ensure_stop = false } -- runtime state, kept across config reloads (core.reload); ensure_stop: stopped on a failed ensure
 
 local function where(loc)
   return vim.fn.fnamemodify(loc.path, ':t') .. ':' .. loc.line
@@ -92,7 +92,7 @@ function M.ignore_current_ensure()
   local session = require('dap').session()
   local thread = session and session.stopped_thread_id and session.threads[session.stopped_thread_id]
   local top = thread and thread.frames and thread.frames[1]
-  if not ensure_stop or not (top and top.source and top.source.path) then
+  if not M.state.ensure_stop or not (top and top.source and top.source.path) then
     return vim.notify('Not stopped on an ensure', vim.log.levels.WARN, { title = 'Debug' })
   end
   load()
@@ -101,7 +101,7 @@ function M.ignore_current_ensure()
     if l.path:lower() == loc.path:lower() and l.line == loc.line then return end
   end
   ignored[#ignored + 1] = loc
-  ensure_stop = false -- the button goes away once used
+  M.state.ensure_stop = false -- the button goes away once used
   apply()
   vim.notify(('Ensure at %s will not suspend again (F5 continues; <leader>dx brings it back)'):format(where(loc)),
     vim.log.levels.INFO, { title = 'Debug' })
@@ -302,7 +302,7 @@ _G._debug_ui.pick = function() M.pick_filters() end
 
 function M.toolbar_checkboxes()
   local parts = {}
-  if ensure_stop then
+  if M.state.ensure_stop then
     parts[#parts + 1] = '%#DapUIDebugIgnoreBtn#%0@v:lua._debug_ui.ignore_ensure@ Ignore this ensure %X%*'
   end
   for _, f in ipairs(M.FILTERS) do
@@ -361,7 +361,7 @@ function M.setup()
   hook_controls()
   dap.listeners.after.event_initialized['debug_ui'] = function(session) send_ignored(session) end
   dap.listeners.after.event_stopped['debug_ui'] = function(_, body)
-    ensure_stop = body ~= nil and body.description == 'ensure() failed' -- dbgeng-dap's ensure stop
+    M.state.ensure_stop = body ~= nil and body.description == 'ensure() failed' -- dbgeng-dap's ensure stop
     vim.schedule(repaint)
   end
   -- clangd needs 40-50 s for a UE file's first parse: start it for the call stack's project files when the
@@ -383,8 +383,8 @@ function M.setup()
   end
   for _, ev in ipairs({ 'event_continued', 'event_terminated', 'event_exited', 'continue' }) do
     dap.listeners.after[ev]['debug_ui'] = function()
-      if ensure_stop then
-        ensure_stop = false
+      if M.state.ensure_stop then
+        M.state.ensure_stop = false
         vim.schedule(repaint)
       end
     end

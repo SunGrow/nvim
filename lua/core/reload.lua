@@ -42,6 +42,8 @@ function M.reload_module(mod)
   end
   if RERUN[mod] then return true, mod .. ' (re-run)' end
   if type(old) == 'table' and type(new) == 'table' and old ~= new then
+    -- runtime state a module keeps in M.state survives (module-local variables start fresh)
+    if type(old.state) == 'table' and type(new.state) == 'table' then new.state = old.state end
     for k in pairs(old) do
       if new[k] == nil then old[k] = nil end
     end
