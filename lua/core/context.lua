@@ -27,10 +27,13 @@ local function first_arg()
   return abs, vim.fn.fnamemodify(abs, ':h'), is_uproject(abs) and stat ~= nil
 end
 
-local uproject = find_uproject(vim.fn.getcwd())
+-- The Unreal tooling here is Windows-only (UBT and engine paths, Win64 binaries, the WinDbg-based
+-- debugger, an MSVC compile database). Elsewhere (WSL opening /mnt/d/...) a UE project is plain C++.
+local on_windows = vim.fn.has('win32') == 1
+local uproject = on_windows and find_uproject(vim.fn.getcwd()) or nil
 local arg_path, arg_dir, arg_is_uproject = first_arg()
 
-if not uproject and arg_dir then
+if on_windows and not uproject and arg_dir then
   if arg_is_uproject then
     uproject = arg_path
   elseif vim.uv.fs_stat(arg_dir) then

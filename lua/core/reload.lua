@@ -1,7 +1,7 @@
 -- Config hot reload: saving (or syncing) a file of this config applies it to the running Neovim.
 --
--- The config folder is watched (libuv fs_event, recursive); changes are applied 300 ms after the
--- last one, so a git pull of many files is one reload:
+-- The config folder is watched (libuv fs_event: recursive, per folder on Linux); changes are applied
+-- 300 ms after the last one, so a git pull of many files is one reload:
 --   * lua/core/*, lua/ue/* modules: re-required and patched into the table already loaded, so code
 --     holding a reference (`local cdb = require('ue.compiledb')`) gets the new functions. Then the
 --     module's `on_reload(old)` runs if it has one, else its `setup()` (all setups here are
@@ -208,9 +208,9 @@ end
 -- watcher -----------------------------------------------------------------------------------------
 local pending = {}
 
-local function on_change(err, filename)
+local function on_change(err, filename, prefix)
   if err or not filename then return end
-  local rel = filename:gsub('\\', '/')
+  local rel = (prefix or '') .. filename:gsub('\\', '/')
   if rel:match('^%.git/') or rel:match('/%.git/') then return end
   if not (rel:match('%.lua$') or rel:match('^tools/.+%.py$') or rel:match('^tools/.+%.js$')) then return end
   pending[rel] = true
@@ -235,13 +235,32 @@ end
 
 function M.setup()
   if #vim.api.nvim_list_uis() == 0 and not vim.g.config_reload_headless then return end -- not in scripts
-  if M._watch then M._watch:stop() end
+  for _, w in ipairs(M._watches or {}) do w:stop() end
+  M._watches = {}
   M._seen = M._seen or {}
   M._started = M._started or os.time()
   M._timer = M._timer or vim.uv.new_timer()
-  M._watch = vim.uv.new_fs_event()
-  local ok, err = M._watch:start(root, { recursive = true }, on_change)
-  if not ok then notify('cannot watch ' .. root .. ': ' .. tostring(err), vim.log.levels.WARN) end
+  -- Windows and macOS watch a tree; Linux (WSL) inotify accepts the recursive flag but watches only
+  -- the folder itself, so there every folder gets its own watcher (folders made later: :ConfigReload)
+  local linux = vim.fn.has('linux') == 1
+  local dirs = { '' }
+  if linux then
+    local skip = function(d) return d ~= '.git' and d ~= '__pycache__' end
+    for name, type in vim.fs.dir(root, { depth = 6, skip = skip }) do
+      if type == 'directory' and name ~= '.git' and not name:match('__pycache__') then
+        dirs[#dirs + 1] = name .. '/'
+      end
+    end
+  end
+  for _, dir in ipairs(dirs) do
+    local w = vim.uv.new_fs_event()
+    local ok, err = w:start(root .. '/' .. dir, { recursive = not linux }, function(e, f) on_change(e, f, dir) end)
+    if ok then
+      M._watches[#M._watches + 1] = w
+    elseif dir == '' then
+      notify('cannot watch ' .. root .. ': ' .. tostring(err), vim.log.levels.WARN)
+    end
+  end
   vim.api.nvim_create_user_command('ConfigReload', function() M.reload_all() end,
     { desc = 'Reload this Neovim config (modules, plugin specs, color scheme)' })
 end
