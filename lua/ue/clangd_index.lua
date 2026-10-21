@@ -73,6 +73,30 @@ function M.apply(cmd, mode)
   return cmd
 end
 
+-- Restarts clangd right away. A clangd in the middle of indexing takes 30 s+ to exit when asked
+-- (it finishes the files in flight), keeping its RAM while Unreal starts: stop it by force
+-- (shards are written atomically) and hide the "quit with exit code 1" warning that causes.
+local function restart()
+  local clients = vim.lsp.get_clients({ name = 'clangd' })
+  if #clients == 0 then return end
+  local notify = vim.notify
+  vim.notify = function(msg, ...)
+    if type(msg) == 'string' and msg:find('^Client clangd quit with exit code') then return end
+    return notify(msg, ...)
+  end
+  for _, c in ipairs(clients) do c:stop(true) end
+  local waited = 0
+  local timer = assert(vim.uv.new_timer())
+  timer:start(200, 200, vim.schedule_wrap(function()
+    waited = waited + 200
+    if #vim.lsp.get_clients({ name = 'clangd' }) > 0 and waited < 5000 then return end
+    timer:stop()
+    timer:close()
+    vim.lsp.enable('clangd') -- loaded C++ buffers attach to a new clangd
+    vim.defer_fn(function() vim.notify = notify end, 1000)
+  end))
+end
+
 local function switch(mode, why)
   if mode == M.state.mode then return end
   M.state.mode = mode
@@ -81,7 +105,7 @@ local function switch(mode, why)
   vim.lsp.config('clangd', { cmd = M.apply(vim.deepcopy(cfg.cmd), mode) })
   local m = MODES[mode]
   vim.notify(('clangd: %s, now %d %s-priority threads'):format(why, m.j, m.priority), vim.log.levels.INFO, { title = 'clangd index' })
-  if #vim.lsp.get_clients({ name = 'clangd' }) > 0 then require('ue.compiledb').restart_clangd() end
+  restart()
 end
 
 --- Count of project source files (compile DB entries outside Intermediate/) with an index shard.
