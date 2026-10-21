@@ -165,7 +165,11 @@ The same repository is the WSL config: `~/.config/nvim` in WSL is a clone, updat
 - clangd: the distribution's `clangd` on PATH (Ubuntu clangd 21); Mason is not asked for it on Linux, and `lsp.lua` enables it itself (mason-lspconfig's `automatic_enable` covers only Mason-installed servers).
 - codelldb (debugging) is a zip: Mason needs `unzip` (`sudo apt install unzip`); until then it is not requested, so no install error at each start. Installed in WSL (Mason codelldb).
 - Debugging outside Unreal (codelldb): F5 → pick "Launch executable" → the prompt offers the program debugged last in this folder (`stdpath('state')/dap-programs.json`), else the newest executable under it; Enter takes it, Esc cancels. codelldb's console is in lldb "commands" mode (`?expr` evaluates); the console title says so. dbgeng's exception checkboxes are shown only in dbgeng sessions.
-- Unreal mode (`core/context.lua`) is Windows-only: a `.uproject` folder opened from WSL is a plain C++ project.
+- Unreal mode (`core/context.lua`) is Windows-only: a `.uproject` folder opened from WSL is a plain C++ project, with one exception, clangd:
+  - UBT's `compile_commands.json` is clang-cl + MSVC with `C:/`/`D:/` paths and `.rsp` files. The Linux clangd matched none of it and parsed every file without flags ("clangd fallback" in the LSP log): no UE types, ~20 bogus errors per file.
+  - So a Windows UE project under `/mnt/<drive>/` (`ctx.wsl_ue`) gets Windows' Mason `clangd.exe` (`$CLANGD_WINDOWS` overrides) with `--path-mappings`. It reads the engine natively and shares the project's index with Windows Neovim: Find Usages works at once.
+  - DrvFs ignores case: `ctx.wsl_ue.win_root` is the real-case Windows path (what the compile database uses), and the first mapping is `<root as typed>=/<win_root>`, so results come back in the spelling of the cwd (`/mnt/d/development/V2`) and do not open a second buffer for the same file.
+  - Files inside the Linux file system get no clangd in that mode (Windows clangd cannot read them). Without `compile_commands.json` (generated only by Windows Neovim) the Linux clangd is used.
 - Config hot reload watches each folder on Linux (inotify ignores the recursive flag).
 - Clipboard: Neovim picks xclip (or win32yank.exe from the Windows Neovim) for `unnamedplus`.
 
