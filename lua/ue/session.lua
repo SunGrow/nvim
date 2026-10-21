@@ -29,6 +29,24 @@ local function save()
   vim.o.sessionoptions = saved
 end
 
+-- Sessions saved before UNL's paths were fixed (lang-ue.lua patch_unl_paths) hold buffers named
+-- `D:///Development/...`: restored as a second buffer of the file, with an LSP URI that matches
+-- neither compile_commands.json nor clangd's index. Rewritten to `D:/...` before sourcing.
+local function fix_paths(file)
+  local f = io.open(file, 'rb')
+  if not f then return end
+  local text = f:read('*a')
+  f:close()
+  local fixed, n = text:gsub('(%f[%w][A-Za-z]:)//+', '%1/')
+  if n == 0 then return end
+  f = io.open(file, 'wb')
+  if f then
+    f:write(fixed)
+    f:close()
+  end
+end
+M._fix_paths = fix_paths
+
 function M.setup()
   local group = vim.api.nvim_create_augroup('UeSession', { clear = true })
   vim.api.nvim_create_autocmd('VimEnter', {
@@ -40,6 +58,7 @@ function M.setup()
       -- VimEnter handler (plugin/UNL.lua) still indexes it ("Invalid buffer id: 1" + ENTER prompt).
       -- Outside the autocmd, BufRead/FileType/LSP autocmds run normally for the restored buffers.
       vim.schedule(function()
+        pcall(fix_paths, session_file())
         pcall(vim.cmd, 'silent! source ' .. vim.fn.fnameescape(session_file()))
       end)
     end,
