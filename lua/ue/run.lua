@@ -97,7 +97,9 @@ end
 
 local function program_for(target, config, engine)
   if target.type == 'Editor' then
-    return binary(engine .. '/Engine', 'UnrealEditor', config), { uproject_arg() }
+    -- -cmdlink: a build while it runs is a Live Coding compile (ue/live_coding.lua)
+    local args = vim.list_extend({ uproject_arg() }, require('ue.live_coding').launch_args())
+    return binary(engine .. '/Engine', 'UnrealEditor', config), args
   end
   return binary(ROOT, target.name, config), {}
 end
@@ -267,11 +269,9 @@ local function build_unix(cfg, on_success)
   build_job = job
 end
 
---- Build; `on_success` runs only after a successful build. On Windows UBT.nvim builds (its own echo is
---- off, lang-ue.lua, so the result is reported here; a failed build opens its diagnostics picker).
-function M.build(cfg, on_success)
-  cfg = cfg or M.selected()
-  if not cfg then return notify('No run configuration selected', vim.log.levels.WARN) end
+--- UBT build; `on_success` runs only after a successful build. On Windows UBT.nvim builds (its own echo
+--- is off, lang-ue.lua, so the result is reported here; a failed build opens its diagnostics picker).
+local function ubt_build(cfg, on_success)
   if host ~= 'windows' then return build_unix(cfg, on_success) end
   require('lazy').load({ plugins = { 'UBT.nvim' } })
   -- UBT.nvim runs one job at a time: starting the build would stop a compile DB update (a few
@@ -284,7 +284,7 @@ function M.build(cfg, on_success)
       if cdb.running() then return end
       timer:stop()
       timer:close()
-      M.build(cfg, on_success)
+      ubt_build(cfg, on_success)
     end))
     return
   end
@@ -307,6 +307,18 @@ function M.build(cfg, on_success)
       end
     end,
   })
+end
+
+--- Build. An Editor configuration whose editor runs (started from here, -cmdlink) gets a Live Coding
+--- compile instead, like Rider's Build and Reload: UBT refuses to build while Live Coding is active.
+--- Builds that launch afterwards (F5, Ctrl+F5) always use UBT.
+function M.build(cfg, on_success)
+  cfg = cfg or M.selected()
+  if not cfg then return notify('No run configuration selected', vim.log.levels.WARN) end
+  if on_success or cfg.type ~= 'Editor' or PLATFORM ~= 'Win64' then return ubt_build(cfg, on_success) end
+  require('ue.live_coding').compile(function(taken)
+    if not taken then ubt_build(cfg) end
+  end)
 end
 
 local function ue_starting()

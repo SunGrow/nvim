@@ -54,6 +54,15 @@ map('n', '<M-o>', function()
   end
 end, { desc = 'Switch header/source' })
 
+-- Unreal RPCs / BlueprintNativeEvents (Rider: Navigate To related, Alt+Enter generate), clangd only, so
+-- also from WSL / Linux
+if ctx.is_ue or ctx.wsl_ue or ctx.ue_unix then
+  map('n', '<leader>cR', function() require('ue.rpc').goto_related() end,
+    { desc = 'Unreal: Go to _Implementation / _Validate / declaration' })
+  map('n', '<leader>cG', function() require('ue.rpc').generate_missing() end,
+    { desc = 'Unreal: Generate missing _Implementation / _Validate' })
+end
+
 -- Alt+] — Find Usages (Rider's VS Code keymap, as in the user's Rider)
 -- LSP: core.code.usages() (clangd picker), fallback: Telescope grep word
 map('n', '<M-]>', function()
