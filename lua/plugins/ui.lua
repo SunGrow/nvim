@@ -102,23 +102,23 @@ local function fixed_width()
   return w + math.max(3, #tostring(pos[1])) + math.max(2, #tostring(pos[2] + 1)) + 3 -- location: %3l:%-2v, padding, separator
 end
 
---- `path` in `room` cells: the leading folders shrink to their first letter, from the left
---- ("S\CyberVolleyball6vs6\Framework\..."), then give way ("…\GameState\Foo.cpp").
+--- `path` in `room` cells, keeping as many whole folder names as fit, nearest the file first: the
+--- leading folders shrink to their first letter ("S\C\Framework\GameState\Foo.cpp"), or, when that is
+--- still too long, give way ("…\Framework\GameState\Foo.cpp").
 local function fit_path(path, room)
   if sw(path) <= room then return path end
   local sep = path:match('[\\/]') or '/'
   local parts = vim.split(path, '[\\/]')
-  for i = 1, #parts - 1 do
-    parts[i] = vim.fn.strcharpart(parts[i], 0, parts[i]:sub(1, 1) == '.' and 2 or 1)
-    local short = table.concat(parts, sep)
+  for k = 1, #parts - 1 do
+    local tail = table.concat(parts, sep, k + 1)
+    local heads = {}
+    for i = 1, k do heads[i] = vim.fn.strcharpart(parts[i], 0, parts[i]:sub(1, 1) == '.' and 2 or 1) end
+    local short = table.concat(heads, sep) .. sep .. tail
+    if sw(short) <= room then return short end
+    short = '…' .. sep .. tail
     if sw(short) <= room then return short end
   end
-  while #parts > 1 do
-    table.remove(parts, 1)
-    local short = '…' .. sep .. table.concat(parts, sep)
-    if sw(short) <= room then return short end
-  end
-  return parts[1]
+  return parts[#parts]
 end
 
 --- The window you work in: a floating window (picker, key sheet, hover) counts as the one under it.
