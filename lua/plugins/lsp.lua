@@ -42,8 +42,11 @@ return {
     clangd_bin = clangd_bin[#clangd_bin] or 'clangd'
 
     -- Build clangd command (UE-aware)
+    -- --log=error: clangd's default (info) logs every request on stderr, which Neovim writes to lsp.log
+    -- at ERROR level (WSL: 96 MB in four days); errors and crashes still reach it
     local clangd_cmd = {
       clangd_bin,
+      '--log=error',
       '--background-index',
       '--background-index-priority=background',
       '--completion-style=detailed',
@@ -150,7 +153,7 @@ return {
         if type == 'directory' and name:match('^%a$') then maps[#maps + 1] = ('/mnt/%s=/%s:'):format(name, name:upper()) end
       end
       clangd_conf.cmd = {
-        win_clangd, '--compile-commands-dir=' .. wsl_ue.win_root, '--path-mappings=' .. table.concat(maps, ','),
+        win_clangd, '--log=error', '--compile-commands-dir=' .. wsl_ue.win_root, '--path-mappings=' .. table.concat(maps, ','),
         '--background-index', '--background-index-priority=background', '--completion-style=detailed',
         '--function-arg-placeholders=false', '-j=4', '--limit-results=500', '--header-insertion=never',
         '--pch-storage=disk',
@@ -192,7 +195,7 @@ return {
       vim.lsp.config('clangd_engine', vim.tbl_extend('error', clangd_status, {
         capabilities = capabilities,
         cmd = {
-          clangd_bin, '--compile-commands-dir=' .. engine_cdb, '--background-index=false',
+          clangd_bin, '--log=error', '--compile-commands-dir=' .. engine_cdb, '--background-index=false',
           '--completion-style=detailed', '--function-arg-placeholders=false', '-j=2', '--limit-results=500',
           '--header-insertion=never', '--pch-storage=disk',
         },

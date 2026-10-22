@@ -339,25 +339,38 @@ local function dap_launch(cfg)
     return notify('No debug adapter (' .. adapter .. ') is set up', vim.log.levels.ERROR)
   end
   ue_starting()
-  dap.run({
-    name = 'UE: ' .. cfg.name, type = adapter, request = 'launch',
-    program = cfg.program, args = cfg.args, cwd = cfg.cwd,
-    engineRoot = cfg.engine, -- dbgeng: Unreal.natvis also for game executables outside Engine/Binaries
-  })
+  local function go(extra)
+    dap.run({
+      name = 'UE: ' .. cfg.name, type = adapter, request = 'launch',
+      program = cfg.program, args = vim.list_extend(vim.list_extend({}, cfg.args), extra or {}), cwd = cfg.cwd,
+      engineRoot = cfg.engine, -- dbgeng: Unreal.natvis also for game executables outside Engine/Binaries
+    })
+  end
+  -- editors: zenserver first (ue/zen.lua)
+  local zen = require('ue.zen')
+  if zen.enabled(cfg) then return zen.prepare(go) end
+  go()
 end
 
 local function start_detached(cfg, extra_args)
   if not vim.uv.fs_stat(cfg.program) then
     return notify('Not built yet: ' .. cfg.program, vim.log.levels.ERROR)
   end
-  local cmd = { cfg.program }
-  vim.list_extend(cmd, cfg.args)
-  vim.list_extend(cmd, extra_args or {})
   ue_starting()
-  local ok, obj = pcall(vim.system, cmd, { cwd = cfg.cwd, detach = true, stdout = false, stderr = false })
-  if not ok then return notify('Failed to start: ' .. tostring(obj), vim.log.levels.ERROR) end
-  running = obj
-  notify(('Started %s (pid %d)'):format(cfg.name, obj.pid))
+  local function go(zen_args)
+    local cmd = { cfg.program }
+    vim.list_extend(cmd, cfg.args)
+    vim.list_extend(cmd, extra_args or {})
+    vim.list_extend(cmd, zen_args or {})
+    local ok, obj = pcall(vim.system, cmd, { cwd = cfg.cwd, detach = true, stdout = false, stderr = false })
+    if not ok then return notify('Failed to start: ' .. tostring(obj), vim.log.levels.ERROR) end
+    running = obj
+    notify(('Started %s (pid %d)'):format(cfg.name, obj.pid))
+  end
+  -- editors: zenserver first (ue/zen.lua)
+  local zen = require('ue.zen')
+  if zen.enabled(cfg) then return zen.prepare(go) end
+  go()
 end
 
 --- F5: build, then launch under the debugger.

@@ -202,7 +202,10 @@ function M.open()
             sent = true
             require('core.symbols').load_index(c) -- a bufferless clangd loads its index only when told to
             if pending then c:cancel_request(pending) end
-            local ok, id = c:request('workspace/symbol', { query = prompt }, function(err, res)
+            local ok, id
+            ok, id = c:request('workspace/symbol', { query = prompt }, function(err, res)
+              -- answered: no longer cancellable (cancelling it logged "Cannot find request with id")
+              if pending == id then pending = nil end
               if not err and res then sym = { res = res } end
               if not sym then sym = { res = {} } end
             end)

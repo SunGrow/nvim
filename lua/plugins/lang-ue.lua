@@ -238,7 +238,8 @@ end
 -- UNL startup race: unl-server registers the project a few hundred ms after it starts, but UEA's code lens
 -- queries the first buffer before that. The query fails with "Project not found" (or ECONNREFUSED while
 -- the server is still starting), UEA reports it as an error (an ENTER prompt at startup) and the first
--- file never gets its lenses. Retry those transient errors for up to 10 s.
+-- file never gets its lenses. Retry those transient errors for up to 30 s (10 s was not enough while
+-- clangd indexed: the error came 11-12 s after UEA asked, 2026-10-23).
 local function patch_unl_startup_retry()
   local ok, db = pcall(require, 'UNL.db')
   if not ok or type(db) ~= 'table' or db._lazyf_retry_applied or type(db.get_file_symbols) ~= 'function' then
@@ -254,7 +255,7 @@ local function patch_unl_startup_retry()
       get_file_symbols(file_path, function(result, err)
         local msg = err and tostring(err) or ''
         local transient = msg:find('Project not found', 1, true) or msg:find('ECONNREFUSED', 1, true)
-        if transient and callback and tries < 20 then
+        if transient and callback and tries < 60 then
           tries = tries + 1
           vim.defer_fn(attempt, 500)
         elseif callback then

@@ -130,11 +130,14 @@ function M.workspace(kinds, title)
       sleep(50)
     end
     local tx, rx = channel.oneshot()
-    local ok, id = c:request('workspace/symbol', { query = prompt }, function(err, res) tx(err, res) end)
+    local ok, id
+    ok, id = c:request('workspace/symbol', { query = prompt }, function(err, res)
+      if pending == id then pending = nil end -- answered: cancelling it would log "Cannot find request"
+      tx(err, res)
+    end)
     if not ok then return {} end
     pending = id
     local err, res = rx()
-    if pending == id then pending = nil end
     if err or not res then return {} end
     local items = items_of(c, res)
     shown[prompt] = signature(items)
