@@ -1,8 +1,11 @@
 -- Neovim process RAM (MB) — updated every 2s via timer
 local ram_mb = 0
 
--- UE project name (evaluated once at startup via core.context, zero cost outside UE projects)
-local ue_project_name = require('core.context').ue_project_name or ''
+-- UE project name (evaluated once at startup via core.context, zero cost outside UE projects); also in
+-- WSL / Linux / macOS, where the UNL status and run configurations (Windows plugin suite) are absent
+local ctx = require('core.context')
+local ue_project_name = ctx.ue_project_name or (ctx.wsl_ue or ctx.ue_unix or {}).name or ''
+local ue_tools = ctx.is_ue
 
 return {
   -- Status line
@@ -44,10 +47,15 @@ return {
             color = { fg = '#7aa2f7' },
           },
           {
-            -- clangd still parsing this file (no semantic colors / navigation yet): "⠋ building preamble"
+            -- clangd still parsing this file (no semantic colors / navigation yet): "⠋ building preamble";
+            -- with no file: "⠋ compile db", "⠋ clangd loading index" (lua/core/clangd.lua)
             function() return require('core.clangd').text() end,
             color = { fg = '#e0af68' },
-            cond = function() return package.loaded['core.clangd'] ~= nil end,
+            cond = function()
+              return package.loaded['core.clangd'] ~= nil
+                or (package.loaded['core.compiledb'] ~= nil and require('core.compiledb').busy())
+                or (package.loaded['ue.compiledb_unix'] ~= nil and require('ue.compiledb_unix').busy())
+            end,
           },
           {
             -- clangd's background index while it runs: "⚙ index 12% (14 threads)"; click for details
@@ -66,7 +74,7 @@ return {
             -- UE index / server activity: "UE ⠋ indexing 42%", "UE ✓" when ready (lua/ue/status.lua)
             function() return require('ue.status').text() end,
             color = function() return require('ue.status').color() end,
-            cond = function() return ue_project_name ~= '' end,
+            cond = function() return ue_tools end,
             on_click = function() vim.cmd('UNL status') end,
           },
           {
@@ -74,7 +82,7 @@ return {
             function() return require('ue.run').status() end,
             icon = '▶',
             color = { fg = '#e0af68' },
-            cond = function() return ue_project_name ~= '' end,
+            cond = function() return ue_tools end,
             on_click = function() require('ue.run').pick() end,
           },
           -- NOTE: LSP progress is handled by fidget.nvim (top-right spinner).

@@ -275,6 +275,11 @@ function M.generate(reason)
   end))
 end
 
+--- Running or about to retry (statusline "⠋ compile db", core/clangd.lua).
+function M.busy()
+  return state.running or state.retry ~= nil
+end
+
 local function project_cpp(path)
   local root = P.root:lower() .. '/'
   local p = vim.fs.normalize(path):lower()

@@ -40,7 +40,10 @@ function M.ensure_clangd()
   if not root then return nil end
   local id = vim.lsp.start(vim.tbl_extend('force', vim.deepcopy(cfg), { name = 'clangd', root_dir = root }),
     { attach = false, silent = true })
-  return id and vim.lsp.get_client_by_id(id) or nil
+  client = id and vim.lsp.get_client_by_id(id) or nil
+  -- statusline "⠋ clangd starting" / "loading index" until search works (no file shows its state)
+  if client then require('core.clangd').watch_index(client) end
+  return client
 end
 
 --- clangd reads the compile database, and with it loads its index, only when a file asks for its flags:

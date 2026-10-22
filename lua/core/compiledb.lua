@@ -125,6 +125,9 @@ function M.db_dir(root)
   end
 end
 
+--- A generator is running (statusline "⠋ compile db", core/clangd.lua).
+function M.busy() return next(running) ~= nil end
+
 local function restart_clangd()
   require('ue.compiledb').restart_clangd()
 end

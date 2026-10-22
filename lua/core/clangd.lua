@@ -137,12 +137,50 @@ function M.on_attach(client, bufnr)
   end
 end
 
---- Statusline: the current file's clangd state while it is not idle, e.g. "⠋ building preamble".
+-- A clangd started without a file (core/symbols.lua: an empty Neovim in a project) reports nothing while
+-- it starts and loads its index: 'starting' until initialized, then 'loading' until workspace/symbol
+-- answers. An empty query returns results exactly once the index is in (tested on V2: 0, then 500 at 15 s).
+local project = nil -- { state = 'starting' | 'loading', timer }
+function M.watch_index(client)
+  if project then project.timer:stop(); project.timer:close() end
+  local timer = assert(vim.uv.new_timer())
+  project = { state = 'starting', timer = timer }
+  local asking = false
+  local function done()
+    if project and project.timer == timer then project = nil end
+    if not timer:is_closing() then timer:stop(); timer:close() end
+    vim.cmd.redrawstatus()
+  end
+  timer:start(500, 1500, vim.schedule_wrap(function()
+    if client:is_stopped() then return done() end
+    if not client.initialized or asking then return end
+    project.state = 'loading'
+    asking = true
+    client:request('workspace/symbol', { query = '' }, function(err, res)
+      asking = false
+      if not err and type(res) == 'table' and #res > 0 then done() end
+    end)
+  end))
+end
+
+local function busy_compiledb()
+  for _, name in ipairs({ 'core.compiledb', 'ue.compiledb_unix' }) do
+    local m = package.loaded[name]
+    if m and m.busy and m.busy() then return true end
+  end
+  return false
+end
+
+--- Statusline: the current file's clangd state while it is not idle ("⠋ clangd building preamble"); with
+--- none, the database generation ("⠋ compile db") or a fileless clangd's startup ("⠋ clangd loading index").
 function M.text()
+  local frame = SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1]
   local st = status[vim.uri_from_bufnr(0)]
-  if not st or st == 'idle' then return '' end
   -- clangd reports e.g. "parsing includes, running Update": the first phase is enough
-  return SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1] .. ' clangd ' .. (st:match('^[^,]+') or st)
+  if st and st ~= 'idle' then return frame .. ' clangd ' .. (st:match('^[^,]+') or st) end
+  if busy_compiledb() then return frame .. ' compile db' end
+  if project then return frame .. (project.state == 'starting' and ' clangd starting' or ' clangd loading index') end
+  return ''
 end
 
 -- Background index progress (clangd's "backgroundIndexProgress" token, "12/966" messages): shown in
