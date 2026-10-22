@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# `git` for Neovim in WSL (on PATH via lua/core/wsl_git.lua): Windows' git.exe for working trees on
+# Windows drives (/mnt/<drive>/...), WSL's git everywhere else.
+#
+# A checkout made by Windows git is only read correctly by Windows git: its config has
+# core.autocrlf=true and the Git LFS filter, which WSL git lacks (Slam: WSL git showed CRLF files as
+# changed, and `git status -u` ran for minutes re-reading 25,000 LFS assets over /mnt/d; git.exe:
+# 0.65 s). git.exe gets Windows paths for /mnt/... arguments, and rev-parse's paths come back as
+# /mnt/... spelled like the caller's (gitsigns compares them case-sensitively).
+self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PATH=:$PATH:
+PATH=${PATH//:$self:/:}
+PATH=${PATH#:}
+PATH=${PATH%:}
+
+win=
+case $PWD/ in /mnt/[a-z]/*) win=1 ;; esac
+refs=("$PWD")
+for a in "$@"; do
+  p=${a#--*=}
+  case $p in
+    /mnt/[a-z] | /mnt/[a-z]/*) win=1; refs+=("$p") ;;
+    /*) if [ -e "$p" ]; then win=; break; fi ;; # a WSL path: not a Windows tree
+  esac
+done
+if [ -z "$win" ] || ! command -v git.exe >/dev/null; then exec git "$@"; fi
+
+to_win() { # /mnt/d/x -> D:/x
+  local p=${1#/mnt/}
+  local d=${p%%/*}
+  local rest=${p#"$d"}
+  printf '%s:%s' "${d^^}" "${rest:-/}"
+}
+
+args=()
+for a in "$@"; do
+  case $a in
+    /mnt/[a-z] | /mnt/[a-z]/*) args+=("$(to_win "$a")") ;;
+    --*=/mnt/[a-z] | --*=/mnt/[a-z]/*) args+=("${a%%=*}=$(to_win "${a#*=}")") ;;
+    *) args+=("$a") ;;
+  esac
+done
+
+case " $* " in
+  *" rev-parse "* | *" worktree "*) ;;
+  *) exec git.exe "${args[@]}" ;;
+esac
+
+# D:/x -> /mnt/d/x, in the spelling of the caller's path that it prefixes (DrvFs ignores case)
+to_wsl() {
+  local line=$1
+  if [[ $line =~ ^([A-Za-z]):(/.*)?$ ]]; then
+    local d=${BASH_REMATCH[1]}
+    line=/mnt/${d,,}${BASH_REMATCH[2]}
+    line=${line%/}
+    # the longest run of leading folders it shares with a caller's path takes that path's spelling
+    local r head= best=0 part parts
+    IFS=/ read -ra parts <<<"${line#/}"
+    for r in "${refs[@]}"; do
+      head=
+      for part in "${parts[@]}"; do
+        head=$head/$part
+        [[ ${r,,}/ == "${head,,}"/* ]] || break
+        if ((${#head} > best)); then best=${#head}; fi
+      done
+      if ((best > 0)); then line=${r:0:best}${line:best}; break; fi
+    done
+  fi
+  printf '%s\n' "$line"
+}
+
+set -o pipefail
+git.exe "${args[@]}" | while IFS= read -r line || [ -n "$line" ]; do to_wsl "${line%$'\r'}"; done
