@@ -154,8 +154,12 @@ end
 local function adapter()
   local s = package.loaded['dap'] and require('dap').session()
   if s then return s.config.type end
-  return require('core.context').is_ue and 'dbgeng' or 'codelldb'
+  local ctx = require('core.context')
+  return (ctx.is_ue or ctx.wsl_ue) and 'dbgeng' or 'codelldb'
 end
+
+--- The debugger is (or F5 would start) dbgeng-dap: Unreal on Windows, also from WSL.
+function M.dbgeng() return adapter() == 'dbgeng' end
 
 --- Exception settings as clickable checkboxes ("[x] ensure  [ ] C++ throw  [x] AV  2 ignored").
 --- They are dbgeng-dap's filters: empty for other debuggers.
@@ -197,7 +201,7 @@ local TITLES = {
 }
 
 -- Every debugger key, in the order a newcomer needs them: the toolbar, `?` and F1 are made from this.
--- key: as shown; lhs: the mapping (checked by the F1 sheet); ue: Unreal projects only (dbgeng-dap).
+-- key: as shown; lhs: the mapping (checked by the F1 sheet); ue: dbgeng-dap only (Unreal on Windows, also from WSL).
 M.KEYS = {
   { key = 'F5', lhs = '<F5>', desc = 'Start debugging / continue' },
   { key = 'F6', lhs = '<F6>', desc = 'Pause' },
@@ -236,7 +240,7 @@ local PANEL_HELP = {
 --- Lines for the debugger key list (`?` in the panels, <leader>d?, and the F1 sheet).
 function M.help_lines()
   local lines = {}
-  local ue = require('core.context').is_ue
+  local ue = M.dbgeng()
   for _, k in ipairs(M.KEYS) do
     if not k.ue or ue then lines[#lines + 1] = k.key and ('  %-15s %s'):format(k.key, k.desc) or '' end
   end
@@ -441,14 +445,14 @@ function M.run_to_cursor()
 end
 
 function M.stop()
-  if require('core.context').is_ue then return require('ue.run').stop() end
+  if require('ue.run').available() then return require('ue.run').stop() end
   require('dap').terminate()
 end
 
 --- Restart: stop, then start the same thing again (UE: builds the selected configuration first).
 function M.restart()
   local dap = require('dap')
-  local ue = require('core.context').is_ue
+  local ue = require('ue.run').available()
   if not dap.session() then
     if ue then return require('ue.run').debug() end
     return dap.run_last()

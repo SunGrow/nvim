@@ -79,10 +79,11 @@ return {
           },
           {
             -- selected run configuration, like Rider's toolbar dropdown; click to choose another
+            -- (also WSL / Linux / macOS: lua/ue/run.lua)
             function() return require('ue.run').status() end,
             icon = '▶',
             color = { fg = '#e0af68' },
-            cond = function() return ue_tools end,
+            cond = function() return ue_project_name ~= '' end,
             on_click = function() require('ue.run').pick() end,
           },
           -- NOTE: LSP progress is handled by fidget.nvim (top-right spinner).

@@ -3,6 +3,7 @@
     python dbgeng-dap.py                 # DAP over stdin/stdout (nvim-dap type='executable')
     python dbgeng-dap.py --port 4711     # DAP over TCP, one session (nvim-dap type='server')
     --log FILE                           # protocol + cdb transcript (also env DBGENG_DAP_LOG)
+    --wsl [--path-map CLIENT=WINDOWS]... # client in WSL: /mnt/<drive>/ paths, plus roots spelled otherwise
 """
 import argparse
 import os
@@ -12,7 +13,7 @@ import threading
 import time
 
 from .adapter import Session
-from .dap import DapStream
+from .dap import DapStream, PathMap
 
 
 def make_logger(path):
@@ -33,7 +34,12 @@ def main(argv=None):
     ap.add_argument('--port', type=int, default=0, help='listen on 127.0.0.1:PORT instead of stdio')
     ap.add_argument('--host', default='127.0.0.1')
     ap.add_argument('--log', default=os.environ.get('DBGENG_DAP_LOG', ''))
+    ap.add_argument('--wsl', action='store_true', help='the client sees Windows drives as /mnt/<drive>/')
+    ap.add_argument('--path-map', action='append', default=[], metavar='CLIENT=WINDOWS',
+                    help='a client path prefix and the Windows path it stands for')
     a = ap.parse_args(argv)
+    pairs = [m.split('=', 1) for m in a.path_map if '=' in m]
+    path_map = PathMap(pairs, a.wsl) if (pairs or a.wsl) else None
     log = make_logger(a.log)
     log(f'dbgeng-dap start pid={os.getpid()} python={sys.version.split()[0]} argv={sys.argv}')
     if a.port:
@@ -42,9 +48,9 @@ def main(argv=None):
         conn, peer = srv.accept()
         srv.close()
         log(f'client {peer}')
-        stream = DapStream(conn.makefile('rb'), conn.makefile('wb'), log)
+        stream = DapStream(conn.makefile('rb'), conn.makefile('wb'), log, path_map)
     else:
-        stream = DapStream(sys.stdin.buffer, sys.stdout.buffer, log)
+        stream = DapStream(sys.stdin.buffer, sys.stdout.buffer, log, path_map)
         sys.stdout = sys.stderr  # nothing else may write to the protocol stream
     def hard_exit():
         log('dbgeng-dap exit')

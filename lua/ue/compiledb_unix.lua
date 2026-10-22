@@ -4,7 +4,9 @@
 --     Windows paths, run from <Engine>/Engine/Source as Build.bat does. The database stays Windows-shaped
 --     for Windows' clangd.exe (lsp.lua).
 --   * Linux / macOS (ctx.ue_unix): Epic's Engine/Build/BatchFiles/<Linux|Mac>/Build.sh, which sets up the
---     engine's bundled dotnet and working directory.
+--     engine's bundled dotnet and working directory. Also WSL in a Windows project with an engine
+--     installed in WSL (ctx.ue_unix.engine): its Linux database goes to ctx.ue_unix.db_dir, so that the
+--     one at the root stays Windows Neovim's.
 -- Generation runs when the database is missing, or older than *.uproject / *.uplugin / *.Build.cs /
 -- *.Target.cs (checked at startup), when one of those is saved, and when a project .cpp newer than the
 -- database and missing from it is opened or saved. Space bj runs it by hand.
@@ -65,13 +67,21 @@ local function key(path)
   return vim.fs.normalize(here(path)):lower()
 end
 
+local function db_dir()
+  return P.db_dir or P.root
+end
+
 local function db_path()
-  return P.root .. '/compile_commands.json'
+  return db_dir() .. '/compile_commands.json'
 end
 
 --- Engine root as a path here, or nil.
 local function engine_root()
   if state.engine then return state.engine end
+  if P.engine then
+    state.engine = P.engine
+    return P.engine
+  end
   local function valid(dir)
     return dir and vim.uv.fs_stat(dir .. '/Engine/Build/BatchFiles') and vim.fs.normalize(dir) or nil
   end
@@ -91,14 +101,7 @@ local function engine_root()
         if inst.AppName == 'UE_' .. assoc then found = valid(here(inst.InstallLocation or '')) end
       end
     elseif assoc ~= '' then
-      local ini = vim.fn.has('mac') == 1 and vim.env.HOME .. '/Library/Application Support/Epic/UnrealEngine/Install.ini'
-        or vim.env.HOME .. '/.config/Epic/UnrealEngine/Install.ini'
-      local want = assoc:gsub('[{}]', ''):lower()
-      for k, v in (read(ini) or ''):gmatch('\n%s*([^=\r\n]+)%s*=%s*([^\r\n]+)') do
-        local name = vim.trim(k):gsub('[{}]', ''):lower()
-        if name == want or name == 'ue_' .. want then found = valid(vim.trim(v)) end
-      end
-      found = found or valid('/Users/Shared/Epic Games/UE_' .. assoc)
+      found = ctx.install_ini_engine(assoc, valid) or valid('/Users/Shared/Epic Games/UE_' .. assoc)
     end
   end
   state.engine = found
@@ -126,7 +129,7 @@ local function command(engine)
     vim.list_extend(args, { '-project=' .. P.win_root .. '/' .. vim.fs.basename(P.uproject), '-OutputDir=' .. P.win_root })
     table.insert(args, 1, engine .. '/Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.exe')
   else
-    vim.list_extend(args, { '-project=' .. P.uproject, '-OutputDir=' .. P.root })
+    vim.list_extend(args, { '-project=' .. P.uproject, '-OutputDir=' .. db_dir() })
     table.insert(args, 1, engine .. '/Engine/Build/BatchFiles/' .. P.platform .. '/Build.sh')
   end
   return args, engine .. '/Engine/Source'
@@ -240,6 +243,7 @@ function M.generate(reason)
   if vim.fn.executable(cmd[1]) ~= 1 then
     return notify('compile_commands.json: ' .. cmd[1] .. ' not found', vim.log.levels.WARN)
   end
+  vim.fn.mkdir(db_dir(), 'p')
   state.running = true
   local t0 = vim.uv.hrtime()
   notify(('Generating compile_commands.json (%s)'):format(reason))

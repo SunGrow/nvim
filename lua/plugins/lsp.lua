@@ -53,11 +53,12 @@ return {
     }
     local ctx = require('core.context')
     if ctx.ue_unix then
-      -- Unreal on Linux / macOS: the UE flags below, one database at the project root (ue/compiledb_unix.lua)
+      -- Unreal on Linux / macOS: the UE flags below, one database at the project root (WSL with an engine
+      -- installed in WSL: under Intermediate/, apart from Windows Neovim's; ue/compiledb_unix.lua)
       vim.list_extend(clangd_cmd, {
         '--header-insertion=never',
         '--pch-storage=disk',
-        '--compile-commands-dir=' .. ctx.ue_unix.root,
+        '--compile-commands-dir=' .. (ctx.ue_unix.db_dir or ctx.ue_unix.root),
       })
     elseif is_ue_project then
       -- UE: no header insertion (iwyu breaks .generated.h include order),

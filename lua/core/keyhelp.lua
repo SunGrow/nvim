@@ -52,7 +52,7 @@ local SECTIONS = {
     { 'Space bc', '<leader>bc', 'Configuration (or click ▶)' },
     { 'Space be', '<leader>be', 'Build errors' },
     { 'Space bj', '<leader>bj', 'Regenerate compile_commands.json' },
-  }, ue = true },
+  }, ue = true },  -- an Unreal project anywhere (lua/ue/run.lua)
   { 'Build', {
     { 'Space bj', '<leader>bj', 'compile_commands.json for clangd' },
   }, not_ue = true },
@@ -87,7 +87,7 @@ end
 local function debug_entries()
   local list = {}
   for _, k in ipairs(require('core.debug_ui').KEYS) do
-    if k.key and (not k.ue or require('core.context').is_ue) then list[#list + 1] = { k.key, k.lhs, k.desc } end
+    if k.key and (not k.ue or require('core.debug_ui').dbgeng()) then list[#list + 1] = { k.key, k.lhs, k.desc } end
   end
   return list
 end
@@ -113,7 +113,8 @@ local function sheet()
   local debugging = package.loaded['dap'] and require('dap').session() ~= nil
   local sections = {}
   for _, s in ipairs(SECTIONS) do
-    if (not s.ue or ctx.is_ue) and not (s.not_ue and ctx.is_ue) then
+    local ue = require('ue.run').available()
+    if (not s.ue or ue) and not (s.not_ue and ue) then
       local entries = s[2] == 'debug' and debug_entries() or s[2]
       table.insert(sections, (debugging and s[2] == 'debug') and 1 or #sections + 1, { s[1], entries })
     end

@@ -51,11 +51,15 @@ M.ue_project_root = uproject and vim.fs.normalize(vim.fn.fnamemodify(uproject, '
 M.ue_project_name = uproject and vim.fn.fnamemodify(uproject, ':t:r') or nil
 
 -- Unreal projects outside Windows: plain C++ above (the UE plugin suite is Windows-only here), except
--- for clangd and its compile database, which UBT generates on every platform (ue/compiledb_unix.lua).
---   wsl_ue: WSL in a Windows project (/mnt/d/...). clangd is Windows' clangd.exe, which reads UBT's MSVC
---           database and shares the index with Windows Neovim (lsp.lua). win_root is the Windows path
---           in its real case; root keeps the spelling used here.
---   ue_unix: native Linux / macOS. platform is UBT's name for it.
+-- for clangd and its compile database, which UBT generates on every platform (ue/compiledb_unix.lua),
+-- and the run configurations (ue/run.lua). Each uses the engine native to where Neovim runs:
+--   wsl_ue: WSL in a Windows project (/mnt/d/...) with no engine installed in WSL for it: the Windows
+--           engine. clangd is Windows' clangd.exe, which reads UBT's MSVC database and shares the index
+--           with Windows Neovim (lsp.lua); builds, runs and debugging go through WSL interop.
+--           win_root is the Windows path in its real case; root keeps the spelling used here.
+--   ue_unix: native Linux / macOS, and WSL in a Windows project with an engine installed in WSL for it
+--           (engine set; its compile database goes to db_dir, apart from Windows Neovim's).
+--           platform is UBT's name for it.
 -- Both: { root, uproject, name }
 local function project_info(found)
   local root = vim.fs.normalize(vim.fn.fnamemodify(found, ':h'))
@@ -66,6 +70,42 @@ local function enter(root)
     vim.api.nvim_set_current_dir(root)
   end
 end
+--- An engine registered for EngineAssociation `assoc` in Install.ini, where Linux / macOS engines are
+--- registered (by GUID, or a name such as 5.6 or UE_5.6); `valid` checks a directory, returns it or nil.
+function M.install_ini_engine(assoc, valid)
+  if not assoc or assoc == '' then return nil end
+  local ini = vim.fn.has('mac') == 1 and vim.env.HOME .. '/Library/Application Support/Epic/UnrealEngine/Install.ini'
+    or vim.env.HOME .. '/.config/Epic/UnrealEngine/Install.ini'
+  local f = io.open(ini, 'rb')
+  local text = f and f:read('*a') or ''
+  if f then f:close() end
+  local want = assoc:gsub('[{}]', ''):lower()
+  for k, v in ('\n' .. text):gmatch('\n%s*([^=\r\n]+)%s*=%s*([^\r\n]+)') do
+    local name = vim.trim(k):gsub('[{}]', ''):lower()
+    if name == want or name == 'ue_' .. want then
+      local found = valid(vim.trim(v))
+      if found then return found end
+    end
+  end
+end
+
+--- WSL: an engine installed in WSL (not on a Windows drive) for this project: $UE_ENGINE_ROOT, the
+--- EngineAssociation as a path, or its Install.ini entry. nil: the project uses Windows' engine.
+local function wsl_engine(info)
+  local function valid(dir)
+    if not dir or dir == '' or dir:match('^/mnt/%a/') or dir:match('^/mnt/%a$') then return nil end
+    return vim.uv.fs_stat(dir .. '/Engine/Build/BatchFiles/Linux/Build.sh') and vim.fs.normalize(dir) or nil
+  end
+  local found = valid(vim.env.UE_ENGINE_ROOT)
+  if found then return found end
+  local f = io.open(info.uproject, 'rb')
+  local ok, proj = pcall(vim.json.decode, f and f:read('*a') or '')
+  if f then f:close() end
+  local assoc = ok and type(proj) == 'table' and type(proj.EngineAssociation) == 'string' and proj.EngineAssociation or ''
+  if assoc:find('/') then return valid(assoc:sub(1, 1) == '/' and assoc or vim.fs.normalize(info.root .. '/' .. assoc)) end
+  return M.install_ini_engine(assoc, valid)
+end
+
 if not on_windows then
   local function search(dir) return dir and find_uproject(dir) end
   local found = search(vim.fn.getcwd() .. '/') or search(arg_dir and arg_dir .. '/')
@@ -75,7 +115,14 @@ if not on_windows then
     M.ue_unix.platform = vim.fn.has('mac') == 1 and 'Mac' or 'Linux'
     enter(M.ue_unix.root)
   end
-  if in_wsl_mount then
+  local engine = in_wsl_mount and wsl_engine(project_info(found))
+  if engine then
+    M.ue_unix = project_info(found)
+    M.ue_unix.platform = 'Linux'
+    M.ue_unix.engine = engine
+    M.ue_unix.db_dir = M.ue_unix.root .. '/Intermediate/ClangDatabase/Linux'
+    enter(M.ue_unix.root)
+  elseif in_wsl_mount then
     local info = project_info(found)
     local root = info.root
     -- DrvFs ignores case, so the path typed in the shell (/mnt/d/development/v2) can differ from the

@@ -105,6 +105,19 @@ return {
           },
         }
         dap.configurations.c = dap.configurations.cpp
+
+        -- WSL in a Windows Unreal project (core/context.lua wsl_ue): Win64 programs are debugged with
+        -- dbgeng-dap run by Windows' Python through WSL interop; --wsl translates /mnt/<drive>/ paths,
+        -- --path-map the project root as spelled here (ue/run.lua launches it)
+        local wsl_ue = require('core.context').wsl_ue
+        local win_python = wsl_ue and (vim.fn.exepath('python.exe') ~= '' and vim.fn.exepath('python.exe')
+          or vim.fn.glob('/mnt/c/Users/*/AppData/Local/Programs/Python/Python3*/python.exe', false, true)[1])
+        local script = wsl_ue and vim.fs.normalize(vim.fn.stdpath('config') .. '/tools/dbgeng-dap/dbgeng-dap.py')
+        if win_python and vim.uv.fs_stat(script) then
+          local win_script = vim.trim(vim.fn.system({ 'wslpath', '-w', script }))
+          dap.adapters.dbgeng = { type = 'executable', command = win_python,
+            args = { '-I', win_script, '--wsl', '--path-map', wsl_ue.root .. '=' .. wsl_ue.win_root } }
+        end
       else
         -- UE: DbgEng (WinDbg engine) adapter from tools/dbgeng-dap (or $DBGENG_DAP_PATH).
         -- PDB + Unreal.natvis aware; UDB launches use it via adapter_type = 'dbgeng' (lang-ue.lua).
@@ -173,10 +186,11 @@ return {
       { '<leader>dE', function() require('core.debug_ui').toggle_filter('ensure') end, desc = 'Stop on failed ensure() on / off' },
       { '<leader>dI', function() require('core.debug_ui').ignore_current_ensure() end, desc = 'Ignore this ensure (others still stop)' },
       { '<leader>d?', function() require('core.debug_ui').help() end, desc = 'All debugger keys' },
-      -- UE projects: with no session, F5 builds and debugs the selected run configuration (lua/ue/run.lua)
+      -- UE projects (also WSL / Linux / macOS): with no session, F5 builds and debugs the selected run
+      -- configuration (lua/ue/run.lua)
       { '<F5>', function()
         local dap = require('dap')
-        if not dap.session() and require('core.context').is_ue then return require('ue.run').debug() end
+        if not dap.session() and require('ue.run').available() then return require('ue.run').debug() end
         dap.continue()
       end, desc = 'Debug: Start / Continue' },
       { '<F6>', function() require('dap').pause() end, desc = 'Debug: Pause' },
