@@ -51,7 +51,11 @@ local SECTIONS = {
     { 'Ctrl+Shift+B', '<C-S-b>', 'Build' },
     { 'Space bc', '<leader>bc', 'Configuration (or click ▶)' },
     { 'Space be', '<leader>be', 'Build errors' },
+    { 'Space bj', '<leader>bj', 'Regenerate compile_commands.json' },
   }, ue = true },
+  { 'Build', {
+    { 'Space bj', '<leader>bj', 'compile_commands.json for clangd' },
+  }, not_ue = true },
   { 'Debug', 'debug' },
   { 'Git', {
     { 'Space gc', '<leader>gc', 'Changed files (Tab stages)' },
@@ -109,7 +113,7 @@ local function sheet()
   local debugging = package.loaded['dap'] and require('dap').session() ~= nil
   local sections = {}
   for _, s in ipairs(SECTIONS) do
-    if not s.ue or ctx.is_ue then
+    if (not s.ue or ctx.is_ue) and not (s.not_ue and ctx.is_ue) then
       local entries = s[2] == 'debug' and debug_entries() or s[2]
       table.insert(sections, (debugging and s[2] == 'debug') and 1 or #sections + 1, { s[1], entries })
     end

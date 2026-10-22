@@ -51,7 +51,15 @@ return {
       '-j=8',
       '--limit-results=500',
     }
-    if is_ue_project then
+    local ctx = require('core.context')
+    if ctx.ue_unix then
+      -- Unreal on Linux / macOS: the UE flags below, one database at the project root (ue/compiledb_unix.lua)
+      vim.list_extend(clangd_cmd, {
+        '--header-insertion=never',
+        '--pch-storage=disk',
+        '--compile-commands-dir=' .. ctx.ue_unix.root,
+      })
+    elseif is_ue_project then
       -- UE: no header insertion (iwyu breaks .generated.h include order),
       -- no clang-tidy (.clangd removes all checks anyway, saves init time),
       -- disk PCH storage (UE PCH files are 100MB+, memory mode causes OOM)
@@ -70,11 +78,16 @@ return {
         '--header-insertion=iwyu',
         '--pch-storage=memory',
       })
+      if vim.fn.has('mac') == 1 then
+        -- clangd may run these compilers to learn their system include paths (libc++ / SDK headers
+        -- that a Homebrew or Mason clangd does not know); globs from the clangd docs' system-headers guide
+        table.insert(clangd_cmd, '--query-driver=/usr/bin/**,/usr/local/bin/**,/opt/homebrew/bin/**,'
+          .. '/opt/homebrew/opt/llvm/bin/**,/Library/Developer/CommandLineTools/usr/bin/**,/Applications/Xcode*.app/**')
+      end
     end
 
     -- UE: engine root comes from the project compile DB ("directory" is <root>/Engine/Source).
     -- Read on use: on a project's first open the DB is generated after startup (ue/compiledb.lua).
-    local ctx = require('core.context')
     local engine_root_found
     local function engine_root()
       if engine_root_found or not is_ue_project then return engine_root_found end
@@ -125,8 +138,9 @@ return {
     -- (Mason, from the Windows Neovim) reads it natively and reuses the project's index; --path-mappings
     -- turns /mnt/d/... into D:/... and back. The project root keeps the spelling used here, since
     -- /mnt/d/development and /mnt/d/Development are different buffers to Neovim.
+    -- A missing database is generated with Windows' UBT after startup (ue/compiledb_unix.lua).
     local wsl_ue = ctx.wsl_ue
-    local win_clangd = wsl_ue and vim.uv.fs_stat(wsl_ue.root .. '/compile_commands.json')
+    local win_clangd = wsl_ue
       and (vim.env.CLANGD_WINDOWS or vim.fn.glob('/mnt/c/Users/*/AppData/Local/nvim-data/mason/packages/clangd/*/bin/clangd.exe', false, true)[1])
     if win_clangd then
       clangd_bin = win_clangd
@@ -144,6 +158,24 @@ return {
       -- read files inside the Linux file system
       clangd_conf.root_dir = function(bufnr, on_dir)
         if vim.api.nvim_buf_get_name(bufnr):match('^/mnt/%a/') then on_dir(wsl_ue.root) end
+      end
+    elseif ctx.ue_unix then
+      -- project files and the engine headers they include share the project's server
+      local markers = { '.clangd', 'compile_commands.json', 'compile_flags.txt', '.git' }
+      clangd_conf.root_dir = function(bufnr, on_dir)
+        local path = vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))
+        local engine = require('ue.compiledb_unix').engine_root()
+        if under(path, ctx.ue_unix.root) or under(path, engine) then return on_dir(ctx.ue_unix.root) end
+        on_dir(vim.fs.root(bufnr, markers))
+      end
+    elseif not is_ue_project then
+      -- a database in a build folder clangd does not search (cmake-build-debug/, out/build/<preset>/)
+      clangd_conf.before_init = function(params, config)
+        local dir = require('core.compiledb').db_dir(config.root_dir)
+        if dir then
+          params.initializationOptions = vim.tbl_extend('force', params.initializationOptions or {},
+            { compilationDatabasePath = dir })
+        end
       end
     end
     vim.lsp.config('clangd', clangd_conf)

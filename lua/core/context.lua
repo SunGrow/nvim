@@ -50,14 +50,34 @@ M.is_ue = uproject ~= nil
 M.ue_project_root = uproject and vim.fs.normalize(vim.fn.fnamemodify(uproject, ':h')) or nil
 M.ue_project_name = uproject and vim.fn.fnamemodify(uproject, ':t:r') or nil
 
--- WSL in a Windows UE project (/mnt/d/...): plain C++ above, except that clangd is Windows' clangd.exe,
--- which reads UBT's MSVC compile database and shares the index with Windows Neovim (lsp.lua).
--- wsl_ue = { root = the project root as spelled here, win_root = its Windows path in its real case }
-if not on_windows and vim.env.WSL_DISTRO_NAME then
-  local function mnt(dir) return dir and dir:match('^/mnt/%a/') and find_uproject(dir) end
-  local found = mnt(vim.fn.getcwd() .. '/') or mnt(arg_dir and arg_dir .. '/')
-  if found then
-    local root = vim.fs.normalize(vim.fn.fnamemodify(found, ':h'))
+-- Unreal projects outside Windows: plain C++ above (the UE plugin suite is Windows-only here), except
+-- for clangd and its compile database, which UBT generates on every platform (ue/compiledb_unix.lua).
+--   wsl_ue: WSL in a Windows project (/mnt/d/...). clangd is Windows' clangd.exe, which reads UBT's MSVC
+--           database and shares the index with Windows Neovim (lsp.lua). win_root is the Windows path
+--           in its real case; root keeps the spelling used here.
+--   ue_unix: native Linux / macOS. platform is UBT's name for it.
+-- Both: { root, uproject, name }
+local function project_info(found)
+  local root = vim.fs.normalize(vim.fn.fnamemodify(found, ':h'))
+  return { root = root, uproject = root .. '/' .. vim.fs.basename(found), name = vim.fn.fnamemodify(found, ':t:r') }
+end
+local function enter(root)
+  if vim.fn.getcwd() ~= root and not vim.fn.getcwd():find(root .. '/', 1, true) then
+    vim.api.nvim_set_current_dir(root)
+  end
+end
+if not on_windows then
+  local function search(dir) return dir and find_uproject(dir) end
+  local found = search(vim.fn.getcwd() .. '/') or search(arg_dir and arg_dir .. '/')
+  local in_wsl_mount = found and vim.env.WSL_DISTRO_NAME and found:match('^/mnt/%a/')
+  if found and not in_wsl_mount then
+    M.ue_unix = project_info(found)
+    M.ue_unix.platform = vim.fn.has('mac') == 1 and 'Mac' or 'Linux'
+    enter(M.ue_unix.root)
+  end
+  if in_wsl_mount then
+    local info = project_info(found)
+    local root = info.root
     -- DrvFs ignores case, so the path typed in the shell (/mnt/d/development/v2) can differ from the
     -- case clangd and the compile database use: take each name as the directory lists it
     local real, ok = root:sub(1, 6), true
@@ -70,10 +90,9 @@ if not on_windows and vim.env.WSL_DISTRO_NAME then
       real = real .. '/' .. match
     end
     if ok then
-      M.wsl_ue = { root = root, win_root = real:sub(6, 6):upper() .. ':' .. real:sub(7) }
-      if vim.fn.getcwd() ~= root and not vim.fn.getcwd():find(root .. '/', 1, true) then
-        vim.api.nvim_set_current_dir(root)
-      end
+      info.win_root = real:sub(6, 6):upper() .. ':' .. real:sub(7)
+      M.wsl_ue = info
+      enter(root)
     end
   end
 end
