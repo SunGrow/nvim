@@ -303,6 +303,46 @@ local function patch_unl_paths()
   end
 end
 
+-- UNL asks git for HEAD's commit (`git -C <root> rev-parse HEAD`, vim.fn.systemlist) on every BufReadPost
+-- once the project is set up, and on FocusGained: ~70 ms of the main loop each time on V2. The commit is
+-- read from .git instead (HEAD, then the loose ref or packed-refs); anything else (a worktree's .git file,
+-- a detached ref not found) goes to UNL's command.
+local function read_file(path)
+  local f = io.open(path, 'rb')
+  if not f then return nil end
+  local text = f:read('*a')
+  f:close()
+  return text
+end
+
+local function git_head(root)
+  local gitdir = vim.fs.root(root, '.git')
+  gitdir = gitdir and gitdir .. '/.git'
+  if not gitdir or vim.fn.isdirectory(gitdir) == 0 then return nil end
+  local head = (read_file(gitdir .. '/HEAD') or ''):match('^%s*(.-)%s*$')
+  if head:match('^%x+$') and #head >= 40 then return head end
+  local ref = head:match('^ref:%s*(%S+)$')
+  if not ref then return nil end
+  local loose = (read_file(gitdir .. '/' .. ref) or ''):match('^(%x+)')
+  if loose and #loose >= 40 then return loose end
+  for line in (read_file(gitdir .. '/packed-refs') or ''):gmatch('[^\n]+') do
+    local sha, name = line:match('^(%x+) (%S+)$')
+    if name == ref then return sha end
+  end
+end
+
+local function patch_unl_git_hash()
+  local ok, git = pcall(require, 'UNL.vcs.git')
+  if not ok or type(git) ~= 'table' or git._lazyf_head_applied or type(git.get_hash) ~= 'function' then return end
+  git._lazyf_head_applied = true
+  local get_hash = git.get_hash
+  git.get_hash = function(root)
+    local sha = root and git_head(root)
+    if sha then return 'git:' .. sha end
+    return get_hash(root)
+  end
+end
+
 return {
   -- Core UE runtime/index layer.
   {
@@ -339,6 +379,7 @@ return {
       patch_unl_telescope_provider()
       patch_unl_startup_retry()
       patch_unl_paths()
+      patch_unl_git_hash()
     end,
     keys = {
       { '<leader>Ur', '<cmd>UNL refresh<CR>', desc = 'Unreal: Refresh project cache' },
@@ -792,6 +833,9 @@ return {
             module = 'blink-cmp-unreal',
             name = 'unreal',
             score_offset = 15,
+            -- C++ only (specifiers, #include paths, log macros): it ran in every buffer of a UE project
+            -- (.ini, .cs, Lua, markdown), copying the whole buffer on each completion request
+            enabled = function() return vim.bo.filetype == 'cpp' or vim.bo.filetype == 'c' end,
           },
         },
       },

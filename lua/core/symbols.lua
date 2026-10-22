@@ -83,13 +83,28 @@ function M.workspace(kinds, title)
       return vim.notify('No C/C++ project here (no compile_commands.json): open a C++ file first',
         vim.log.levels.WARN, { title = title })
     end
-    vim.wait(15000, function() return client.initialized or client:is_stopped() end, 50)
   end
-  if not kicked[client.id] and not next(client.attached_buffers) then
-    vim.notify('clangd is loading the project index: results appear in a few seconds (type again)',
-      vim.log.levels.INFO, { title = title })
-    M.load_index(client)
+  -- a clangd just started is not initialized yet (WSL: ~1 s through interop): the picker opens now, the
+  -- index is kicked and searches are sent once it is (a vim.wait here froze the editor meanwhile)
+  local function kick()
+    if not kicked[client.id] and not next(client.attached_buffers) then
+      vim.notify('clangd is loading the project index: results appear in a few seconds (type again)',
+        vim.log.levels.INFO, { title = title })
+      M.load_index(client)
+    end
   end
+  if client.initialized then
+    kick()
+  else
+    local waited, ready = 0, assert(vim.uv.new_timer())
+    ready:start(50, 50, vim.schedule_wrap(function()
+      waited = waited + 50
+      if not (client.initialized or client:is_stopped() or waited >= 15000) then return end
+      if not ready:is_closing() then ready:stop(); ready:close() end
+      if client.initialized then kick() end
+    end))
+  end
+  local sleep = require('plenary.async.util').sleep
   local channel = require('plenary.async.control').channel
   local pending -- id of the request in flight
   local shown = {} -- prompt -> signature of the results last shown for it
@@ -110,6 +125,10 @@ function M.workspace(kinds, title)
     local c = clangd() or client
     if pending then c:cancel_request(pending) end
     if not prompt or prompt == '' then return {} end
+    for _ = 1, 300 do -- up to 15 s for a clangd that is starting
+      if c.initialized or c:is_stopped() then break end
+      sleep(50)
+    end
     local tx, rx = channel.oneshot()
     local ok, id = c:request('workspace/symbol', { query = prompt }, function(err, res) tx(err, res) end)
     if not ok then return {} end
@@ -147,7 +166,7 @@ function M.workspace(kinds, title)
     if quiet > 2 then return end
     local prompt = picker:_get_prompt()
     local c = clangd()
-    if not c or prompt == '' or pending then return end
+    if not c or not c.initialized or prompt == '' or pending then return end
     c:request('workspace/symbol', { query = prompt }, vim.schedule_wrap(function(err, res)
       if err or picker.closed or picker:_get_prompt() ~= prompt then return end
       if signature(items_of(c, res)) ~= shown[prompt] then picker:refresh() end
