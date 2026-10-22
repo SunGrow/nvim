@@ -15,11 +15,46 @@ local function clangd()
   end
 end
 
+--- Root of the C/C++ project in the working directory, as clangd would get it for a file there; nil
+--- when the folder is not one (no Unreal project, no compile database).
+local function project_root(cfg)
+  local ctx = require('core.context')
+  local ue = ctx.wsl_ue or ctx.ue_unix
+  if ue then return ue.root end
+  if ctx.is_ue then return ctx.ue_project_root end
+  local cwd = vim.fn.getcwd()
+  local cdb = require('core.compiledb')
+  if not (cdb.found(cwd .. '/x') or cdb.db_dir(cwd)) then return nil end
+  return vim.fs.root(cwd, cfg.root_markers or { '.git' }) or cwd
+end
+
+--- The running clangd, or one started for the project in the working directory without a file (an empty
+--- Neovim in a project, like opening a solution in Rider). A file opened later joins it (same name and
+--- root). Returns nil outside a C/C++ project.
+function M.ensure_clangd()
+  local client = clangd()
+  if client then return client end
+  require('lazy').load({ plugins = { 'nvim-lspconfig' } }) -- loads on the first file read otherwise
+  local cfg = vim.lsp.config.clangd
+  local root = cfg and project_root(cfg)
+  if not root then return nil end
+  local id = vim.lsp.start(vim.tbl_extend('force', vim.deepcopy(cfg), { name = 'clangd', root_dir = root }),
+    { attach = false, silent = true })
+  return id and vim.lsp.get_client_by_id(id) or nil
+end
+
 --- Live picker over clangd's workspace symbols; kinds: set of LSP kind names, nil for all.
 function M.workspace(kinds, title)
   local client = clangd()
   if not client then
-    return vim.notify('clangd is not running yet: open a C++ file first', vim.log.levels.WARN, { title = title })
+    client = M.ensure_clangd()
+    if not client then
+      return vim.notify('No C/C++ project here (no compile_commands.json): open a C++ file first',
+        vim.log.levels.WARN, { title = title })
+    end
+    vim.notify('Starting clangd: results appear once it has loaded its index (a few seconds)',
+      vim.log.levels.INFO, { title = title })
+    vim.wait(15000, function() return client.initialized or client:is_stopped() end, 50)
   end
   local channel = require('plenary.async.control').channel
   local pending -- id of the request in flight

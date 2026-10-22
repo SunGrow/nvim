@@ -313,6 +313,9 @@ function M.setup()
     M.stale_reason(function(reason)
       if reason then return M.generate(reason) end
       if M.add_pch() > 0 then require('ue.compiledb').restart_clangd() end
+      -- the project's clangd runs from the start, as in an IDE: class / symbol search works before a
+      -- file is open, and its index is loaded by the time it is used
+      require('core.symbols').ensure_clangd()
     end)
   end, 1500)
 end
