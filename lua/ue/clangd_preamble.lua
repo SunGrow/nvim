@@ -254,12 +254,15 @@ end
 
 local TYPE_KINDS = { [5] = true, [10] = true, [11] = true, [23] = true } -- class, enum, interface, struct
 
---- The headers that define `names` (index lookup) and that the PCH includes: `done(paths)`.
-local function headers_for(client, names, allowed, done)
-  local found, left = {}, #names
+--- The headers that define `names` (index lookup) and that the PCH includes: `done(paths)`. A file can
+--- be parsed before clangd has loaded the project's index: while every lookup finds nothing, they are
+--- asked again (for up to a minute).
+local function headers_for(client, names, allowed, done, tries)
+  local found, left, total = {}, #names, 0
   if left == 0 then return done({}) end
   for _, name in ipairs(names) do
     client:request('workspace/symbol', { query = name }, function(err, res)
+      total = total + #((not err and res) or {})
       for _, s in ipairs((not err and res) or {}) do
         local path = s.name == name and TYPE_KINDS[s.kind] and s.location and s.location.uri
           and clangd_path(s.location.uri)
@@ -269,7 +272,12 @@ local function headers_for(client, names, allowed, done)
         end
       end
       left = left - 1
-      if left == 0 then done(vim.tbl_keys(found)) end
+      if left > 0 then return end
+      if total == 0 and (tries or 0) < 30 and not client:is_stopped() then
+        vim.defer_fn(function() headers_for(client, names, allowed, done, (tries or 0) + 1) end, 2000)
+      else
+        done(vim.tbl_keys(found))
+      end
     end)
   end
 end
