@@ -193,7 +193,23 @@ local function patch_unl_telescope_provider()
   end
 end
 
--- Auto-create .clangd + set UE indentation when in a UE project
+if is_ue_project or ctx.wsl_ue or ctx.ue_unix then
+  -- UE Coding Standards: tabs with width 4 for C/C++ files, also in a UE project opened from WSL / Linux /
+  -- macOS (2-wide tabs there misaligned UE source)
+  -- Acts as fallback — .editorconfig (if present) overrides via BufReadPost
+  vim.api.nvim_create_autocmd('FileType', {
+    group = vim.api.nvim_create_augroup('UnrealIndent', { clear = true }),
+    pattern = { 'c', 'cpp' },
+    callback = function()
+      vim.bo.expandtab = false
+      vim.bo.tabstop = 4
+      vim.bo.shiftwidth = 4
+      vim.bo.softtabstop = 4
+    end,
+  })
+end
+
+-- Auto-create .clangd when in a UE project
 if is_ue_project then
   local project_root = ctx.ue_project_root
   local clangd_path = project_root .. '/.clangd'
@@ -278,19 +294,6 @@ if is_ue_project then
       end
     end
   end
-
-  -- UE Coding Standards: tabs with width 4 for C/C++ files
-  -- Acts as fallback — .editorconfig (if present) overrides via BufReadPost
-  vim.api.nvim_create_autocmd('FileType', {
-    group = vim.api.nvim_create_augroup('UnrealIndent', { clear = true }),
-    pattern = { 'c', 'cpp' },
-    callback = function()
-      vim.bo.expandtab = false
-      vim.bo.tabstop = 4
-      vim.bo.shiftwidth = 4
-      vim.bo.softtabstop = 4
-    end,
-  })
 
   -- Keep UE filetypes simple and parser-compatible (no custom parser required).
   vim.api.nvim_create_autocmd({ 'BufRead', 'BufNewFile' }, {
