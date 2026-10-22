@@ -179,6 +179,10 @@ return {
         end
       end
     end
+    if is_ue_project or win_clangd then
+      -- opened project files parse without the module's shared PCH when they can (ue/clangd_preamble.lua)
+      clangd_conf.on_init = function(client) require('ue.clangd_preamble').attach(client) end
+    end
     vim.lsp.config('clangd', clangd_conf)
     -- mason-lspconfig's automatic_enable covers only servers Mason installed; on Linux (WSL) clangd
     -- comes from the distribution (ensure_installed above)
