@@ -24,6 +24,8 @@ local SUFFIXES = { GENERATED_BODY = true, GENERATED_BODY_LEGACY = true, PROLOG =
 local WINDOW = 80 -- lines a macro may move before the next build regenerates the header
 local HEADER = '// Made by Neovim (lua/ue/uht_shadow.lua) for clangd; rewritten when the header below changes.'
 local VERSION = '2' -- of the shadow text: a change rewrites every shadow
+-- .clangd Diagnostics.Includes.IgnoreHeader (regexes, suffix match on the path)
+M.IGNORE_HEADERS = [=[['CoreMinimal\.h', '.*\.generated\.h']]=]
 
 --- Project root here and as clangd.exe sees it (Windows path).
 local function roots()
@@ -201,8 +203,16 @@ function M.ensure_clangd_flag()
   local file = root .. '/.clangd'
   local text = read(file)
   local flag = M.clangd_flag()
-  if not text or text:find(flag, 1, true) or not text:find('Add: [-D__INTELLISENSE__', 1, true) then return false end
-  text = text:gsub(', "/clang:%-iquote[^"]*ClangdUHT"', ''):gsub('Add: %[%-D__INTELLISENSE__', 'Add: [-D__INTELLISENSE__, ' .. flag, 1)
+  if not text or not text:find('Add: [-D__INTELLISENSE__', 1, true) then return false end
+  local old = text
+  if not text:find(flag, 1, true) then
+    text = text:gsub(', "/clang:%-iquote[^"]*ClangdUHT"', ''):gsub('Add: %[%-D__INTELLISENSE__', 'Add: [-D__INTELLISENSE__, ' .. flag, 1)
+  end
+  if not text:find('IgnoreHeader', 1, true) then
+    local nl = text:find('\r\n', 1, true) and '\r\n' or '\n'
+    text = text:gsub('Diagnostics:' .. nl, function(m) return m .. '  Includes:' .. nl .. '    IgnoreHeader: ' .. M.IGNORE_HEADERS .. nl end, 1)
+  end
+  if text == old then return false end
   local f = io.open(file, 'wb')
   if not f then return false end
   f:write(text)

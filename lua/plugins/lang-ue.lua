@@ -227,6 +227,11 @@ if is_ue_project then
     '',
     'Diagnostics:',
     '  Suppress: [pp_file_not_found, drv_unknown_argument, unknown_argument]',
+    -- never "unused", as in Rider (ReSharper C++ checks IsCoreMinimalFileInclude /
+    -- IsHeaderToolGeneratedFileInclude): CoreMinimal.h only includes other headers, so clangd saw no
+    -- symbol come from it directly (lua/ue/uht_shadow.lua IGNORE_HEADERS)
+    '  Includes:',
+    '    IgnoreHeader: ' .. require('ue.uht_shadow').IGNORE_HEADERS,
     '  ClangTidy:',
     "    Remove: ['*']",
     '',
@@ -254,7 +259,7 @@ if is_ue_project then
       or existing:find('-include,', 1, true) ~= nil
     local indexes_intermediate = not existing:find('Background: Skip', 1, true)
     local keeps_resource_dir = not existing:find('-resource-dir', 1, true)
-    local lacks_uht_shadow = not existing:find(uht_flag, 1, true)
+    local lacks_uht_shadow = not existing:find(uht_flag, 1, true) or not existing:find('IgnoreHeader', 1, true)
     if managed_by_this_config and (strips_required_forced_includes or indexes_intermediate or keeps_resource_dir or lacks_uht_shadow) then
       should_write = true
     end
