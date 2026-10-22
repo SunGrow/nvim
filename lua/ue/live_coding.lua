@@ -72,6 +72,35 @@ local function log_path()
   return (ctx.ue_project_root or (P and P.root)) .. '/Saved/Logs/' .. NAME .. '.log'
 end
 
+-- The compile itself is UBT's (-LiveCoding), which writes its log to %LOCALAPPDATA%/UnrealBuildTool/Log.txt
+-- (rewritten by the Live Coding compile tested on V2). Its compiler errors go to the quickfix list like a
+-- failed build's (ue/run.lua). Assumption: the errors appear there in MSVC form, as in a normal build's
+-- output; no failing Live Coding compile was run (it needs a broken project file).
+local function ubt_log()
+  local dir = vim.env.LOCALAPPDATA
+  if P then
+    local res = vim.system({ 'cmd.exe', '/c', 'echo %LOCALAPPDATA%' }, { text = true }):wait(3000)
+    local win = res.code == 0 and vim.trim(res.stdout or '') or ''
+    res = win ~= '' and vim.system({ 'wslpath', '-u', win }, { text = true }):wait(3000) or nil
+    dir = res and res.code == 0 and vim.trim(res.stdout or '') or nil
+  end
+  return dir and (dir .. '/UnrealBuildTool/Log.txt') or nil
+end
+
+local function show_errors(result)
+  local path = ubt_log()
+  local f = path and io.open(path, 'rb')
+  local items = {}
+  if f then
+    items = require('ue.run').quickfix_items(f:read('*a') or '')
+    f:close()
+  end
+  vim.fn.setqflist({}, ' ', { title = 'Live Coding', items = items })
+  notify(result .. (#items > 0 and ('\n' .. #items .. ' errors in the quickfix list')
+    or '\nThe Live Coding window in the editor has the output'), vim.log.levels.ERROR)
+  if #items > 0 then vim.cmd('botright copen') end
+end
+
 --- `offset`: the log's size before the compile was asked for.
 local function report_result(offset)
   local path = log_path()
@@ -97,13 +126,14 @@ local function report_result(offset)
     offset = now.size
     rest = text:match('[^\n]*$') or ''
     for line in text:sub(1, #text - #rest):gmatch('[^\r\n]+') do
-      local result = line:match('LogLiveCoding: %w+: (Live coding %a+.*)$')
+      -- LiveCodingModule.cpp (5.6 / 5.8): "Live coding succeeded[, ...]" (Display, or Warning for data type
+      -- changes), "Live coding canceled", "Live coding failed, please see Live console ..." (Error)
+      local verbosity, result = line:match('LogLiveCoding: (%w+): (Live coding %a+.*)$')
       if result then
         done()
-        local ok = result:find('succeeded', 1, true) ~= nil
-        notify(result .. (ok and '' or ' (the Live Coding window in the editor has the errors)'),
-          ok and vim.log.levels.INFO or vim.log.levels.ERROR)
-        return
+        if result:find('failed', 1, true) then return show_errors(result) end
+        local level = verbosity == 'Display' and vim.log.levels.INFO or vim.log.levels.WARN
+        return notify(result, level)
       end
     end
   end))

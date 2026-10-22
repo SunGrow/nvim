@@ -50,6 +50,28 @@ end
 
 local Class = { display = display }
 
+-- clangd's positions count UTF-16 units; Neovim's columns are bytes. The line is read only when a row is
+-- previewed or opened (C++ lines with Cyrillic comments before a name were off).
+local symbol_mt = { __index = function(e, k)
+  if k ~= 'col' then return Class[k] end
+  local col = e.char + 1
+  local buf = vim.fn.bufnr(e.filename)
+  local line = buf ~= -1 and vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_lines(buf, e.lnum - 1, e.lnum, false)[1]
+  if not line then
+    local n = 0
+    for l in io.lines(e.filename) do
+      n = n + 1
+      if n == e.lnum then line = l; break end
+    end
+  end
+  if line and e.char > 0 then
+    local ok, byte = pcall(vim.str_byteindex, line, 'utf-16', e.char, false)
+    if ok and byte then col = byte + 1 end
+  end
+  rawset(e, 'col', col)
+  return col
+end }
+
 local function symbol_entries(res)
   local out = {}
   local ue = ue_files()
@@ -63,8 +85,8 @@ local function symbol_entries(res)
       if not (ue and filename:find('[/\\]Intermediate[/\\]')) then
         out[#out + 1] = setmetatable({
           kind = k[1], group = k[2], name = s.name, container = s.containerName, ordinal = s.name,
-          value = s.name, filename = filename, lnum = start.line + 1, col = start.character + 1,
-        }, { __index = Class })
+          value = s.name, filename = filename, lnum = start.line + 1, char = start.character,
+        }, symbol_mt)
       end
     end
   end
@@ -104,7 +126,10 @@ local function make_sorter()
       return tier + s * GROUP_BIAS[entry.group]
     end,
     highlighter = function(_, prompt, text)
-      local pos = base:highlighter(prompt, text:sub(TAG_WIDTH + 2)) -- the name/path part, not the tag
+      -- the name (a symbol's file:line after the padding is not what was matched) or the path; not the tag
+      local body = text:sub(TAG_WIDTH + 2)
+      local pad = body:find('  ', 1, true)
+      local pos = base:highlighter(prompt, pad and body:sub(1, pad - 1) or body)
       if not pos then return pos end
       for i, p in ipairs(pos) do pos[i] = p + TAG_WIDTH + 1 end
       return pos

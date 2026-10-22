@@ -98,7 +98,10 @@ end
 local function program_for(target, config, engine)
   if target.type == 'Editor' then
     -- -cmdlink: a build while it runs is a Live Coding compile (ue/live_coding.lua)
+    -- vim.g.ue_editor_args: more arguments (a list), e.g. { '-ddc=InstalledNoZenLocalFallback' } when a slow
+    -- zenserver start stops the editor on "Wait for ZenServer?" (CLAUDE.md, Unreal Editor)
     local args = vim.list_extend({ uproject_arg() }, require('ue.live_coding').launch_args())
+    vim.list_extend(args, type(vim.g.ue_editor_args) == 'table' and vim.g.ue_editor_args or {})
     return binary(engine .. '/Engine', 'UnrealEditor', config), args
   end
   return binary(ROOT, target.name, config), {}
@@ -233,6 +236,7 @@ local function quickfix_items(output)
   end
   return items
 end
+M.quickfix_items = quickfix_items -- also for Live Coding's UBT log (ue/live_coding.lua)
 
 local function build_unix(cfg, on_success)
   if build_job then return notify('A build is already running (Shift+F5 stops it)', vim.log.levels.WARN) end

@@ -309,6 +309,39 @@ local function definition(fn, suffix)
   return body and { sig, '{', body, '}' } or { sig, '{', '}' }
 end
 
+--- Line after which new definitions go: the end of the class's last member function defined at the top
+--- level of the .cpp (outside #if blocks such as WITH_EDITOR, where they would compile only there), else
+--- the end of the file. Braces are counted with strings, character literals and comments removed.
+local function insert_after(lines, class)
+  local head = '^[%w_].-' .. class .. '%s*::%s*~?[%w_]+%s*%('
+  local pp, depth, last, open = 0, 0, nil, nil
+  local in_block = false
+  for i, raw in ipairs(lines) do
+    local l = raw
+    if in_block then
+      local e = l:find('*/', 1, true)
+      if not e then goto continue end
+      l, in_block = l:sub(e + 2), false
+    end
+    l = l:gsub('\\.', ''):gsub('"[^"]*"', '""'):gsub("'[^']*'", "''"):gsub('/%*.-%*/', '')
+    do
+      local c = l:find('/*', 1, true)
+      if c then l, in_block = l:sub(1, c - 1), true end
+    end
+    l = l:gsub('//.*$', '')
+    if l:match('^%s*#%s*if') then pp = pp + 1
+    elseif l:match('^%s*#%s*endif') then pp = math.max(0, pp - 1)
+    elseif pp == 0 and depth == 0 and l:match(head) then open = i end
+    for ch in l:gmatch('[{}]') do
+      depth = depth + (ch == '{' and 1 or -1)
+      if depth == 0 and open and ch == '}' then last, open = i, nil end
+    end
+    if depth < 0 then depth = 0 end
+    ::continue::
+  end
+  return last or #lines
+end
+
 --- The .cpp of a header: clangd's switchSourceHeader, else the same name next to it; `cb(path)`.
 local function source_of(buf, client, cb)
   local function fallback()
@@ -323,8 +356,8 @@ end
 
 --- On a UFUNCTION declaration (Server / Client / NetMulticast RPC, BlueprintNativeEvent): adds the
 --- `_Implementation` (and `_Validate`) definitions missing from the matching .cpp, with the declaration's
---- signature and an empty body, and opens the .cpp there. UHT declares them in the header; nothing is
---- added there. The .cpp is left modified, not saved.
+--- signature and an empty body, after the class's last definition there, and opens the .cpp at them. UHT
+--- declares them in the header; nothing is added there. The .cpp is left modified, not saved.
 function M.generate_missing()
   local title = 'Generate RPC definitions'
   local buf = vim.api.nvim_get_current_buf()
@@ -349,7 +382,7 @@ function M.generate_missing()
     end
     local text = table.concat(kept, '\n')
     local lines, body_row, existing = {}, nil, {}
-    local count = vim.api.nvim_buf_line_count(cpp)
+    local count = insert_after(vim.api.nvim_buf_get_lines(cpp, 0, -1, false), fn.class)
     for _, suffix in ipairs(suffixes) do
       if text:find(fn.class .. '%s*::%s*' .. fn.name .. suffix .. '%s*%(') then
         existing[#existing + 1] = fn.name .. suffix
