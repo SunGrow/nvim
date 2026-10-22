@@ -634,22 +634,43 @@ class Session:
         self.cdb_owner[cid] = bp
         return cid, None
 
-    def _location(self, img, mod, rva):
+    def _location(self, img, mod, rva, source=None):
         """A module-qualified bp expression for img+rva.  Module!Function+off resolves only when that module
         loads; a bare Module+off is re-evaluated as an unqualified symbol on every module load (slow, noisy).
-        Functions whose names MASM cannot parse (lambdas, templates, operators) are addressed relative to
-        another function of the same image (an anchor)."""
+        Functions MASM cannot name (lambdas, templates, operators, overloads) are addressed relative to
+        another function of the same image (an anchor), preferably one from the same source file."""
         r = self._resolver()
         fn, disp = r.function_of(img, rva)
         k = norm(img)
-        if fn and SIMPLE_SYM_RE.match(fn):
+        if fn and self._nameable(img, fn):
             self.anchors.setdefault(k, (fn, rva - disp))
             return f'{mod}!{fn}+0x{disp:x}'
-        if k in self.anchors:
-            afn, arva = self.anchors[k]
+        anchor = self.anchors.get(k) or (source and self._anchor_in(img, source))
+        if anchor:
+            afn, arva = anchor
             d = rva - arva
             return f'{mod}!{afn}{"+" if d >= 0 else "-"}0x{abs(d):x}'
         return f'{mod}+0x{rva:x}'
+
+    def _nameable(self, img, fn):
+        """MASM can address it by name: a plain qualified identifier, and not overloaded. An overloaded
+        name (every UCLASS constructor has an FVTableHelper twin) fails to evaluate when the module loads,
+        and cdb then stops the program on that load, again on every continue."""
+        return bool(SIMPLE_SYM_RE.match(fn)) and self._resolver().name_count(img, fn) == 1
+
+    def _anchor_in(self, img, source):
+        """A nameable function with code in `source`, as the image's anchor; None if it has none."""
+        r = self._resolver()
+        seen = set()
+        for ln in sorted(r.file_lines(img, source)):
+            for rva in r.file_lines(img, source)[ln]:
+                fn, disp = r.function_of(img, rva)
+                if fn and fn not in seen:
+                    seen.add(fn)
+                    if self._nameable(img, fn):
+                        self.anchors[norm(img)] = (fn, rva - disp)
+                        return self.anchors[norm(img)]
+        return None
 
     def _bind_source(self, bp):
         images = self.candidate_images(bp.source)
@@ -674,7 +695,7 @@ class Session:
             for rva in rvas:
                 # Module!Function+off resolves only when that module loads; plain Module+off is re-evaluated
                 # (as an unqualified symbol) on every module load, so use it only for unparsable names.
-                loc = self._location(img, mod, rva)
+                loc = self._location(img, mod, rva, bp.source)
                 cid, err = self._set_cdb_bp(bp, loc)
                 if cid:
                     bp.images.add(norm(img))

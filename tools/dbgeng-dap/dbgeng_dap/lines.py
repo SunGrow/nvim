@@ -53,6 +53,7 @@ class SYMBOL_INFOW_HDR(ctypes.Structure):
 
 
 ENUMLINES_CB = ctypes.WINFUNCTYPE(wt.BOOL, ctypes.POINTER(SRCCODEINFOW), ctypes.c_void_p)
+ENUMSYM_CB = ctypes.WINFUNCTYPE(wt.BOOL, ctypes.POINTER(SYMBOL_INFOW_HDR), wt.ULONG, ctypes.c_void_p)
 
 
 def norm(p):
@@ -92,6 +93,8 @@ class LineResolver:
         d.SymFromAddrW.argtypes = [wt.HANDLE, ctypes.c_uint64, ctypes.POINTER(ctypes.c_uint64),
                                    ctypes.POINTER(SYMBOL_INFOW)]
         d.SymFromAddrW.restype = wt.BOOL
+        d.SymEnumSymbolsW.argtypes = [wt.HANDLE, ctypes.c_uint64, wt.LPCWSTR, ENUMSYM_CB, ctypes.c_void_p]
+        d.SymEnumSymbolsW.restype = wt.BOOL
         d.SymCleanup.argtypes = [wt.HANDLE]
         d.SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_FAIL_CRITICAL_ERRORS
                         | SYMOPT_NO_PROMPTS)
@@ -101,6 +104,7 @@ class LineResolver:
         self.next_base = 0x100000000
         self.images = {}      # norm(image path) -> (fake base, has_lines, pdb path)
         self.cache = {}       # (norm image, norm file) -> {line: [rva, ...]}
+        self.counts = {}      # (norm image, name) -> number of symbols with that name
 
     def _load(self, image):
         key = norm(image)
@@ -173,6 +177,23 @@ class LineResolver:
             if self.dll.SymFromAddrW(self.h, base + rva, ctypes.byref(disp), ctypes.byref(si)):
                 return si.Name, disp.value
             return None, None
+
+    def name_count(self, image, name):
+        """How many symbols of `image` have this name (overloads share one).  The name is a dbghelp mask:
+        only call it with plain identifiers (no * or ?)."""
+        k = (norm(image), name)
+        with self.lock:
+            if k not in self.counts:
+                base, _, _ = self._load(image)
+                n = [0]
+
+                def cb(_p, _size, _ctx):
+                    n[0] += 1
+                    return True
+                if base:
+                    self.dll.SymEnumSymbolsW(self.h, base, name, ENUMSYM_CB(cb), None)
+                self.counts[k] = n[0]
+            return self.counts[k]
 
     def resolve(self, image, source, line, max_forward=200):
         """Return (actual_line, [rva...]) for the first line >= `line` that has code, or (None, [])."""
