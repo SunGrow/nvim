@@ -158,6 +158,29 @@ Measured on 8 V2 files at `-j=8` with RAM free: normal priority 3.3 files/min, b
 3. UNL server loads and scans project structure (statusline `UE ⠋ indexing N%`)
 4. clangd will begin background indexing (first run: hours, subsequent: fast)
 
+## Compile database (clangd) everywhere
+
+clangd needs `compile_commands.json`. Without it, it guesses flags: no include paths, no defines, false errors. Who writes it:
+- **Unreal on Windows:** `lua/ue/compiledb.lua` (UBT, see Unreal Engine 5 Support).
+- **Unreal elsewhere:** `lua/ue/compiledb_unix.lua`, with the same triggers (missing, older than `*.uproject`/`*.uplugin`/`*.Build.cs`/`*.Target.cs`, those saved, a new `.cpp`) and the same PCH fix. `Space bj` runs it by hand.
+  - **WSL in a Windows project** (`ctx.wsl_ue`): Windows `UnrealBuildTool.exe` through WSL interop, run from `<Engine>/Engine/Source` with Windows paths, about 10 s. The result is byte-identical to the Windows-generated database (tested on V2: 1174 entries).
+  - **Linux / macOS** (`ctx.ue_unix`): Epic's `Engine/Build/BatchFiles/<Linux|Mac>/Build.sh` (it sets up the bundled dotnet). The engine is found from the database's `directory`, `$UE_ENGINE_ROOT`, the `.uproject` EngineAssociation path, `Install.ini` (`~/.config/Epic/UnrealEngine/` on Linux, `~/Library/Application Support/Epic/UnrealEngine/` on macOS), or `/Users/Shared/Epic Games/UE_<ver>`.
+  - The PCH fix on Linux/macOS adds `-include "<SharedPCH header>"`, taken from the module's `Module.*.rsp` (`-include`, or the header of `-include-pch X.h.gch`).
+  - Only tested with a stand-in `Build.sh` (no Linux or Mac engine available). The real `.rsp` names and contents on those platforms are unverified.
+  - clangd gets `--compile-commands-dir=<project>`, `--header-insertion=never`, `--pch-storage=disk`. The rest of the UE plugin suite stays Windows-only.
+- **Other C/C++ projects** (`lua/core/compiledb.lua`, any OS). clangd itself finds `compile_commands.json` or `build/compile_commands.json` in every parent folder (clangd 11+). When neither exists for an opened file:
+  - **CMake:** configure with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, automatically, since configuring builds nothing. It goes into the project's existing build folder (a `CMakeCache.txt` of this project in the root or in a build-like folder: `build*`, `_build`, `cmake-build-*`, `out/`, `builddir`), else the first configure preset, else `build/`.
+    - Only the Makefile and Ninja generators write the database. Another generator gets a warning; a new `build/` on Windows uses Ninja.
+    - Saving `CMakeLists.txt`/`*.cmake` configures again.
+  - **Meson:** `meson setup build` (Meson always writes the database), automatically. `meson.build` saves reconfigure.
+  - **Make and others:** only a real build shows the commands. A notice says so once. `Space bj` runs `bear -- make -B -k -j<cpus>`, never automatically.
+    - On macOS Bear uses its wrapper mode, because SIP blocks preload. Compilers called by absolute path can be missed (Bear docs).
+    - `./configure` projects need it run first.
+  - A database in a folder clangd does not search reaches it as `initializationOptions.compilationDatabasePath` (`before_init` in `lsp.lua`), so no project file is written.
+  - Output of the last run is in `stdpath('cache')/compiledb.log` (UE: `ue-compiledb.log`).
+- clangd ignores a database that appears while a file is open until that file is reparsed (tested: still 3 errors after 40 s, 0 after an edit), so every generator restarts the clangd clients (`ue.compiledb.restart_clangd`).
+- On macOS clangd gets `--query-driver` for the system, Homebrew and Xcode compilers (system headers, per clangd's system-headers guide). Untested.
+
 ## WSL (Ubuntu) and other Linux
 
 The same repository is the WSL config: `~/.config/nvim` in WSL is a clone, updated with `git pull --ff-only /mnt/d/Development/projects/utilities/ed/nvim master` (add `-c safe.directory=...` for the /mnt/d repo). `lazy-lock.json` is gitignored, so each side keeps its own plugin versions.
