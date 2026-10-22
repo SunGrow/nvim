@@ -8,10 +8,13 @@
 -- So before a project file is opened, clangd gets that file's command with the shared PCH replaced by
 -- its definitions header and CoreMinimal.h (clangd's compilationDatabaseChanges; the database and the
 -- background index of other files keep the full PCH). Code that compiles only because the PCH
--- included something for it (a third of the files sampled) then has errors: when an unmodified
--- buffer gets them, the file is parsed again with the full PCH and remembered in
--- Intermediate/ClangdFullPCH.txt. If the same errors remain with the full PCH, they were real ones
--- and the file is forgotten again.
+-- included something for it (a third of the files sampled) then has errors. When an unmodified buffer
+-- gets them, the classes they name (UGameInstance, USkeletalMesh...) are looked up in the index, and
+-- their headers are force-included as well if the PCH includes them (its .dep.json from the build):
+-- 4-14 s instead of 22-35 s for the files sampled. When that does not help (a name the index or the
+-- PCH does not have, or errors after three rounds), the file gets the full PCH. Both are remembered
+-- in Intermediate/ClangdFullPCH.txt (a path, then the added headers; a path alone: full PCH). If the
+-- same errors remain with the full PCH, they were real ones and the file is forgotten again.
 
 local M = {}
 
@@ -134,39 +137,69 @@ local function entry_for(win)
   return best
 end
 
---- The full and the light command (argument lists) of an entry; nil when it has no shared PCH.
-local function commands(e)
+--- The full command (argument list) of an entry, the shared PCH it force-includes, and the light
+--- command with `extra` headers force-included too; nil when it has no shared PCH.
+local function commands(e, extra)
   local full = split(e.command)
-  local light, found = {}, false
+  local light, found = {}, nil
   for _, a in ipairs(full) do
     local pch = not found and a:match('^/FI(.*SharedPCH%.[^/\\]*%.h)$')
     if pch then
-      found = true
+      found = pch
       local defs = pch:gsub('SharedPCH%.([^/\\]*%.h)$', 'SharedDefinitions.%1')
       if vim.uv.fs_stat(here(defs)) then light[#light + 1] = '/FI' .. defs end
       light[#light + 1] = '/FICoreMinimal.h'
+      for _, h in ipairs(extra or {}) do light[#light + 1] = '/FI' .. h end
     else
       light[#light + 1] = a
     end
   end
   if not found then return nil end
-  return full, light
+  return full, found, light
 end
 
--- Files that need the full PCH: lower-case Windows path -> true
-local list
+local pch_sets = {} -- PCH path -> { mtime, set of lower-case headers it includes }
+
+--- Headers the PCH includes (lower case, /), from the .dep.json its build wrote; nil without one.
+local function pch_headers(pch)
+  local path = here(pch .. '.dep.json')
+  local st = vim.uv.fs_stat(path)
+  if not st then return nil end
+  local c = pch_sets[pch]
+  if c and c.mtime == st.mtime.sec then return c.set end
+  local ok, dep = pcall(vim.json.decode, read(path) or '')
+  local includes = ok and type(dep) == 'table' and type(dep.Data) == 'table' and dep.Data.Includes
+  if type(includes) ~= 'table' then return nil end
+  local set = {}
+  for _, h in ipairs(includes) do set[key(h)] = true end
+  pch_sets[pch] = { mtime = st.mtime.sec, set = set }
+  return set
+end
+
+-- Remembered files: lower-case Windows path -> true (full PCH) or the headers to add. Read again for
+-- each use: Windows and WSL Neovim share the file.
 local function list_path()
   local root = roots()
   return root .. LIST
 end
 local function load_list()
-  if list then return list end
-  list = {}
-  for line in (read(list_path()) or ''):gmatch('[^\r\n]+') do list[line] = true end
+  local list = {}
+  for line in (read(list_path()) or ''):gmatch('[^\r\n]+') do
+    local path, headers = line:match('^([^\t]+)\t(.+)$')
+    if path then
+      list[path] = vim.split(headers, '|', { plain = true })
+    else
+      list[line] = true
+    end
+  end
   return list
 end
-local function save_list()
-  local lines = vim.tbl_keys(list)
+--- Remember `path` with true (full PCH), a list of headers, or nil (forget it).
+local function remember(path, value)
+  local list = load_list()
+  list[key(path)] = value
+  local lines = {}
+  for p, v in pairs(list) do lines[#lines + 1] = v == true and p or (p .. '\t' .. table.concat(v, '|')) end
   table.sort(lines)
   local f = io.open(list_path(), 'wb')
   if not f then return end
@@ -186,18 +219,77 @@ local function errors(diagnostics)
   return set, n
 end
 
+--- Names the errors say are missing: incomplete or unknown types and undeclared identifiers, and the
+--- token an error in an included file points at ("expected class name" after `: public`).
+local function missing_names(diagnostics)
+  local names = {}
+  local function add(text)
+    for q in text:gmatch("'([^']+)'") do
+      local name = q:gsub('^const ', ''):gsub('^class ', ''):gsub('^struct ', ''):gsub('[%s%*&]+$', '')
+      if name:match('^[%a_][%w_]*$') then names[name] = true end
+    end
+  end
+  for _, d in ipairs(diagnostics or {}) do
+    if d.severity == 1 then
+      local msg = (d.message or ''):gsub('; did you mean.*$', '')
+      if msg:find('incomplete', 1, true) or msg:find('undeclared', 1, true) or msg:find('unknown type', 1, true) then
+        add(msg)
+      end
+      for _, r in ipairs(d.relatedInformation or {}) do
+        local rmsg = r.message or ''
+        if rmsg:find('^Forward declaration') or rmsg:find('incomplete', 1, true) then
+          add(rmsg)
+        elseif rmsg == 'Error occurred here' and d.code == 'expected_class_name' then
+          local file = clangd_path(r.location.uri)
+          local at = r.location.range.start
+          local lines = file and vim.fn.readfile(here(file), '', at.line + 1) or {}
+          local name = lines[at.line + 1] and lines[at.line + 1]:sub(at.character + 1):match('^[%a_][%w_]*')
+          if name then names[name] = true end
+        end
+      end
+    end
+  end
+  return vim.tbl_keys(names)
+end
+
+local TYPE_KINDS = { [5] = true, [10] = true, [11] = true, [23] = true } -- class, enum, interface, struct
+
+--- The headers that define `names` (index lookup) and that the PCH includes: `done(paths)`.
+local function headers_for(client, names, allowed, done)
+  local found, left = {}, #names
+  if left == 0 then return done({}) end
+  for _, name in ipairs(names) do
+    client:request('workspace/symbol', { query = name }, function(err, res)
+      for _, s in ipairs((not err and res) or {}) do
+        local path = s.name == name and TYPE_KINDS[s.kind] and s.location and s.location.uri
+          and clangd_path(s.location.uri)
+        if path and allowed[key(path)] then
+          found[path] = true
+          break
+        end
+      end
+      left = left - 1
+      if left == 0 then done(vim.tbl_keys(found)) end
+    end)
+  end
+end
+
 local function send(client, path, e, argv)
   client:notify('workspace/didChangeConfiguration', {
     settings = { compilationDatabaseChanges = { [path] = { workingDirectory = e.directory, compilationCommand = argv } } },
   })
 end
 
+local function say(msg) vim.notify(msg, vim.log.levels.INFO, { title = 'clangd' }) end
+
 --- Called for each clangd client of the project (lsp.lua on_init): light commands go out before each
 --- didOpen.
 function M.attach(client)
   local root, win_root = roots()
   if not win_root then return end
-  local mine = {} -- path -> { mode = 'light' | 'full', entry, full, errors = set of the light parse }
+  -- path -> { mode = 'light' | 'full', entry, full, pch, extra = added headers, rounds,
+  --           errors = the light parse's (to compare with the full PCH's), busy = looking up names }
+  local mine = {}
   M.files = mine
   local notify = client.notify
   local start_uri = vim.uri_from_fname(root .. '/' .. M.START)
@@ -208,12 +300,15 @@ function M.attach(client)
       pcall(function()
         local path = clangd_path(params.textDocument.uri)
         if not path or key(path):sub(1, #win_root + 1) ~= key(win_root) .. '/' then return end
-        if mine[path] or load_list()[key(path)] then return end
+        if mine[path] then return end
+        local saved = load_list()[key(path)]
+        if saved == true then return end
         local e = entry_for(path)
         if not e then return end
-        local full, light = commands(e)
+        local extra = type(saved) == 'table' and saved or {}
+        local full, pch, light = commands(e, extra)
         if not light then return end
-        mine[path] = { mode = 'light', entry = e, full = full }
+        mine[path] = { mode = 'light', entry = e, full = full, pch = pch, extra = extra, rounds = #extra > 0 and 1 or 0 }
         send(self, path, e, light)
       end)
     end
@@ -236,30 +331,48 @@ function M.attach(client)
       local path = clangd_path(result.uri)
       local f = path and mine[path]
       local buf = f and vim.uri_to_bufnr(result.uri)
-      if not f or vim.bo[buf].modified then return end
+      if not f or f.busy or vim.bo[buf].modified then return end
+      -- while a new preamble is being built, clangd publishes a parse made with the previous one
+      if (require('core.clangd').file_state(result.uri) or ''):find('parsing includes', 1, true) then return end
       local set, n = errors(result.diagnostics)
+      local name = vim.fs.basename(key(path))
       if f.mode == 'light' then
         if n == 0 then return end
-        f.mode, f.errors = 'full', set
-        load_list()[key(path)] = true
-        save_list()
-        send(client, path, f.entry, f.full)
-        vim.notify(("%s: %d errors without the module's PCH; parsing again with it (remembered)")
-          :format(vim.fs.basename(key(path)), n), vim.log.levels.INFO, { title = 'clangd' })
+        local function full_pch()
+          f.mode, f.errors = 'full', set
+          remember(path, true)
+          send(client, path, f.entry, f.full)
+          say(("%s: %d errors without the module's PCH; parsing again with it (remembered)"):format(name, n))
+        end
+        local allowed = f.rounds < 3 and pch_headers(f.pch)
+        if not allowed then return full_pch() end
+        f.busy = true
+        headers_for(client, missing_names(result.diagnostics), allowed, function(headers)
+          f.busy = false
+          pcall(function()
+            local new = {}
+            for _, h in ipairs(headers) do
+              if not vim.tbl_contains(f.extra, h) then new[#new + 1] = h end
+            end
+            if #new == 0 then return full_pch() end
+            vim.list_extend(f.extra, new)
+            f.rounds = f.rounds + 1
+            remember(path, f.extra)
+            local _, _, light = commands(f.entry, f.extra)
+            send(client, path, f.entry, light)
+            local names = vim.tbl_map(function(h) return vim.fs.basename(key(h)) end, new)
+            say(("%s: %d errors without the module's PCH; adding %s from it (remembered)")
+              :format(name, n, table.concat(names, ', ')))
+          end)
+        end)
       elseif f.errors then
-        -- while the full preamble is still being built, clangd publishes a parse made with the light one
-        -- (with the same errors): wait for the parse with the full PCH
-        if (require('core.clangd').file_state(result.uri) or ''):find('parsing includes', 1, true) then return end
         -- the same errors with the full PCH mean real ones, not a missing include
         local same = n > 0
         for k in pairs(f.errors) do
           if not set[k] then same = false break end
         end
         f.errors = nil
-        if same then
-          load_list()[key(path)] = nil
-          save_list()
-        end
+        if same then remember(path, nil) end
       end
     end)
     return ret
