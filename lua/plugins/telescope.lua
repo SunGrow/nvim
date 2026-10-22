@@ -83,6 +83,8 @@ return {
     { '<leader>fk', function()
         require('telescope.builtin').keymaps({ modes = { 'n', 'x', 'i' }, show_plug = false })
       end, desc = 'Find key binding' },
+    -- Rider's Search Everywhere (double Shift): files and C/C++ symbols in one list
+    { '<leader><leader>', function() require('core.search_everywhere').open() end, desc = 'Search everywhere' },
     { '<leader>fc', function() require('core.symbols').classes() end, desc = 'Find class' },
     { '<leader>fs', function() require('core.symbols').functions() end, desc = 'Find function' },
     { '<leader>fS', function() require('core.symbols').all() end, desc = 'Find symbol (any kind)' },
