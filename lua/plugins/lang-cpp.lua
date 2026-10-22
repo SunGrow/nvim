@@ -115,8 +115,11 @@ return {
         local script = wsl_ue and vim.fs.normalize(vim.fn.stdpath('config') .. '/tools/dbgeng-dap/dbgeng-dap.py')
         if win_python and vim.uv.fs_stat(script) then
           local win_script = vim.trim(vim.fn.system({ 'wslpath', '-w', script }))
-          dap.adapters.dbgeng = { type = 'executable', command = win_python,
-            args = { '-I', win_script, '--wsl', '--path-map', wsl_ue.root .. '=' .. wsl_ue.win_root } }
+          -- through sh, which ignores SIGINT: nvim-dap ends an adapter with stdin's EOF plus SIGINT, and WSL's
+          -- interop process exits 1 on SIGINT ("adapter exited with 1"); the adapter ends on the EOF
+          dap.adapters.dbgeng = { type = 'executable', command = 'sh',
+            args = { '-c', 'trap "" INT; "$0" "$@"', win_python, '-I', win_script, '--wsl',
+              '--path-map', wsl_ue.root .. '=' .. wsl_ue.win_root } }
         end
       else
         -- UE: DbgEng (WinDbg engine) adapter from tools/dbgeng-dap (or $DBGENG_DAP_PATH).
