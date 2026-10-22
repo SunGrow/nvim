@@ -11,18 +11,24 @@
 -- aliases of the nearest real one. clangd reads the shadows first: .clangd adds `/clang:-iquote<dir>`,
 -- searched for "X.generated.h" before UBT's /I folders (tested with clangd 20 in clang-cl mode).
 -- Names found in two modules get no shadow (the real one is used).
-
-local ctx = require('core.context')
+--
+-- The scan runs as a separate `nvim -l` job (this file with --job): from WSL, reading and writing ~1000
+-- files on /mnt/d took two minutes, which on Neovim's own loop stalled typing.
 
 local M = {}
+
+local job_roots -- { root, win_root } in the job process, which has no config (core.context)
 
 -- macros the source writes, keyed by line; the rest of the generated macros use fixed line numbers
 local SUFFIXES = { GENERATED_BODY = true, GENERATED_BODY_LEGACY = true, PROLOG = true, VINTERFACES = true, DELEGATE = true }
 local WINDOW = 80 -- lines a macro may move before the next build regenerates the header
 local HEADER = '// Made by Neovim (lua/ue/uht_shadow.lua) for clangd; rewritten when the header below changes.'
+local VERSION = '2' -- of the shadow text: a change rewrites every shadow
 
 --- Project root here and as clangd.exe sees it (Windows path).
 local function roots()
+  if job_roots then return job_roots[1], job_roots[2] end
+  local ctx = require('core.context')
   if ctx.is_ue then return ctx.ue_project_root, ctx.ue_project_root end
   if ctx.wsl_ue then return ctx.wsl_ue.root, ctx.wsl_ue.win_root end
 end
@@ -73,7 +79,8 @@ function M.shadow_text(text, include_path)
     end
   end
   if #order == 0 then return nil end
-  local out = { HEADER, '#pragma once', ('#include "%s"'):format(include_path) }
+  -- export: the include in X.h counts as used for the macros of the real header (clangd's unused-includes)
+  local out = { HEADER, '#pragma once', ('#include "%s" // IWYU pragma: export'):format(include_path) }
   for _, key in ipairs(order) do
     local g = groups[key]
     table.sort(g.lines)
@@ -141,33 +148,43 @@ local function update(name, path, force)
   return true
 end
 
-local running = false
-
---- Bring every shadow up to date, a few files per event-loop turn; `done(written)` afterwards.
-function M.refresh(done)
-  if running or not roots() then return end
-  running = true
+--- In the job process: bring every shadow up to date; prints { headers = name -> path, written = n }.
+function M.job(root, win_root)
+  job_roots = { root, win_root }
   local found, dup = scan()
-  M.headers = found
   local dir = M.dir()
   for name in pairs(dup) do os.remove(dir .. '/' .. name) end
-  local names = vim.tbl_keys(found)
-  local i, written = 0, 0
-  local function step()
-    for _ = 1, 25 do
-      i = i + 1
-      local name = names[i]
-      if not name then
-        running = false
-        if done then done(written) end
-        return
-      end
-      local ok, w = pcall(update, name, found[name])
-      if ok and w then written = written + 1 end
-    end
-    vim.defer_fn(step, 0)
+  local force = read(dir .. '/.version') ~= VERSION
+  local written = 0
+  for name, path in pairs(found) do
+    local ok, w = pcall(update, name, path, force)
+    if ok and w then written = written + 1 end
   end
-  step()
+  if force then
+    vim.fn.mkdir(dir, 'p')
+    local f = io.open(dir .. '/.version', 'wb')
+    if f then f:write(VERSION) f:close() end
+  end
+  io.stdout:write(vim.json.encode({ headers = found, written = written }))
+end
+
+local running = false
+
+--- Bring every shadow up to date in the background; `done(written)` afterwards.
+function M.refresh(done)
+  local root, win_root = roots()
+  if running or not root then return end
+  running = true
+  local script = debug.getinfo(1, 'S').source:sub(2)
+  local cmd = { vim.v.progpath, '--clean', '--headless', '-l', script, '--job', root, win_root }
+  local ok = pcall(vim.system, cmd, { text = true }, vim.schedule_wrap(function(res)
+    running = false
+    local decoded, out = pcall(vim.json.decode, res.stdout or '')
+    if res.code ~= 0 or not decoded or type(out) ~= 'table' then return end
+    M.headers = type(out.headers) == 'table' and out.headers or {}
+    if done then done(out.written or 0) end
+  end))
+  if not ok then running = false end
 end
 
 --- The shadow of the header in `buf` (X.h -> X.generated.h), when its real one changed.
@@ -197,6 +214,7 @@ local last_focus = 0
 
 function M.setup()
   if not roots() then return end
+  local ctx = require('core.context')
   local group = vim.api.nvim_create_augroup('ue-uht-shadow', { clear = true })
   vim.defer_fn(function()
     M.refresh(function()
@@ -221,5 +239,7 @@ function M.setup()
     callback = function(ev) refresh_buf(ev.buf) end,
   })
 end
+
+if arg and arg[1] == '--job' then M.job(arg[2], arg[3]) end
 
 return M
