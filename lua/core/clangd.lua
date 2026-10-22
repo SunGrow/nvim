@@ -113,6 +113,9 @@ function M.on_file_status(_, result, ctx)
   vim.cmd.redrawstatus()
 end
 
+--- clangd's last reported state of a file ("parsing includes", "idle"...), or nil.
+function M.file_state(uri) return status[uri] end
+
 --- LspAttach of a clangd client.
 function M.on_attach(client, bufnr)
   local uri = vim.uri_from_bufnr(bufnr)

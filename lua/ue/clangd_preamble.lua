@@ -247,7 +247,10 @@ function M.attach(client)
         vim.notify(("%s: %d errors without the module's PCH; parsing again with it (remembered)")
           :format(vim.fs.basename(key(path)), n), vim.log.levels.INFO, { title = 'clangd' })
       elseif f.errors then
-        -- the first parse with the full PCH: the same errors mean real ones, not a missing include
+        -- while the full preamble is still being built, clangd publishes a parse made with the light one
+        -- (with the same errors): wait for the parse with the full PCH
+        if (require('core.clangd').file_state(result.uri) or ''):find('parsing includes', 1, true) then return end
+        -- the same errors with the full PCH mean real ones, not a missing include
         local same = n > 0
         for k in pairs(f.errors) do
           if not set[k] then same = false break end
