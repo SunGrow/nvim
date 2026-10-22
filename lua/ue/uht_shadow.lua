@@ -196,48 +196,19 @@ local function refresh_buf(buf)
   if path then pcall(update, name, path) end
 end
 
---- Add the flag to a .clangd this config wrote (WSL only uses it: Windows Neovim writes the whole file,
---- lang-ue.lua); true if changed.
-function M.ensure_clangd_flag()
-  local root = roots()
-  local file = root .. '/.clangd'
-  local text = read(file)
-  local flag = M.clangd_flag()
-  if not text or not text:find('Add: [-D__INTELLISENSE__', 1, true) then return false end
-  local old = text
-  local nl = text:find('\r\n', 1, true) and '\r\n' or '\n'
-  if not text:find(flag, 1, true) then
-    text = text:gsub(', "/clang:%-iquote[^"]*ClangdUHT"', ''):gsub('Add: %[%-D__INTELLISENSE__', 'Add: [-D__INTELLISENSE__, ' .. flag, 1)
-  end
-  if not text:find('IgnoreHeader', 1, true) then
-    text = text:gsub('Diagnostics:' .. nl, function(m) return m .. '  Includes:' .. nl .. '    IgnoreHeader: ' .. M.IGNORE_HEADERS .. nl end, 1)
-  end
-  local preamble = require('ue.clangd_preamble')
-  if not text:find(preamble.START_MATCH, 1, true) then
-    text = text:gsub('[\r\n]*$', nl) .. preamble.CLANGD_FRAGMENT:gsub('\n', nl)
-  end
-  if text == old then return false end
-  local f = io.open(file, 'wb')
-  if not f then return false end
-  f:write(text)
-  f:close()
-  return true
-end
-
 local last_focus = 0
 
 function M.setup()
   if not roots() then return end
   local ctx = require('core.context')
   local group = vim.api.nvim_create_augroup('ue-uht-shadow', { clear = true })
-  vim.defer_fn(function()
-    M.refresh(function()
-      -- the first time: clangd reads the new flag at its next start
-      if ctx.wsl_ue and M.ensure_clangd_flag() then
-        pcall(function() require('ue.compiledb').restart_clangd() end)
-      end
-    end)
-  end, 3000)
+  if ctx.wsl_ue then
+    -- .clangd (with clangd_flag()) before clangd starts (Windows Neovim: lang-ue.lua)
+    local config = require('ue.clangd_config')
+    pcall(config.ensure, ctx.wsl_ue.root)
+    pcall(config.rebuild_index_once, ctx.wsl_ue.root)
+  end
+  vim.defer_fn(M.refresh, 3000)
   -- a build in the editor or Rider rewrites the generated headers while Neovim is in the background
   vim.api.nvim_create_autocmd('FocusGained', {
     group = group,

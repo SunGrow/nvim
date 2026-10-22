@@ -143,6 +143,7 @@ end
 local function restart_clangd()
   local clients = vim.lsp.get_clients({ name = 'clangd' })
   if #clients == 0 then return end
+  local fileless = require('core.symbols').fileless()
   for _, c in ipairs(clients) do c:stop() end
   local waited = 0
   local timer = assert(vim.uv.new_timer())
@@ -154,6 +155,7 @@ local function restart_clangd()
     timer:close()
     for _, c in ipairs(left) do c:stop(true) end
     vim.lsp.enable('clangd') -- runs the FileType autocmds of loaded buffers: they attach to a new clangd
+    require('core.symbols').restart_fileless(fileless)
   end))
 end
 M.restart_clangd = restart_clangd

@@ -46,6 +46,20 @@ function M.ensure_clangd()
   return client
 end
 
+--- For a clangd restart (new database, thread count): true if a clangd runs without a file, which
+--- `vim.lsp.enable` (FileType of loaded buffers) would not start again.
+function M.fileless()
+  for _, c in ipairs(vim.lsp.get_clients({ name = 'clangd' })) do
+    if not next(c.attached_buffers) then return true end
+  end
+  return false
+end
+
+--- After a restart: start that fileless clangd again when no file brought one back.
+function M.restart_fileless(had)
+  if had and not clangd() then M.ensure_clangd() end
+end
+
 --- clangd reads the compile database, and with it loads its index, only when a file asks for its flags:
 --- a client with no file open answered workspace/symbol with nothing (tested: 0 results after 60 s).
 --- It is told about one instead: didOpen + didClose of an empty file at the project root, no buffer
@@ -78,25 +92,38 @@ function M.workspace(kinds, title)
   end
   local channel = require('plenary.async.control').channel
   local pending -- id of the request in flight
+  local shown = {} -- prompt -> signature of the results last shown for it
+  local function items_of(c, res)
+    local items = {}
+    for _, item in ipairs(vim.lsp.util.symbols_to_items(res or {}, 0, c.offset_encoding)) do
+      if not kinds or kinds[item.kind] then items[#items + 1] = item end
+    end
+    return items
+  end
+  local function signature(items)
+    local names = {}
+    for i = 1, math.min(#items, 100) do names[i] = items[i].text end
+    return #items .. '\n' .. table.concat(names, '\n')
+  end
   local function search(prompt)
-    if pending then client:cancel_request(pending) end
+    -- the clangd running now: a restart (new database, thread count) replaces the client
+    local c = clangd() or client
+    if pending then c:cancel_request(pending) end
     if not prompt or prompt == '' then return {} end
     local tx, rx = channel.oneshot()
-    local ok, id = client:request('workspace/symbol', { query = prompt }, function(err, res) tx(err, res) end)
+    local ok, id = c:request('workspace/symbol', { query = prompt }, function(err, res) tx(err, res) end)
     if not ok then return {} end
     pending = id
     local err, res = rx()
     if pending == id then pending = nil end
     if err or not res then return {} end
-    local items = {}
-    for _, item in ipairs(vim.lsp.util.symbols_to_items(res, 0, client.offset_encoding)) do
-      if not kinds or kinds[item.kind] then items[#items + 1] = item end
-    end
+    local items = items_of(c, res)
+    shown[prompt] = signature(items)
     return items
   end
   local opts = { bufnr = 0, ignore_filename = false, symbol_width = 60, symbol_type_width = 11 }
   local conf = require('telescope.config').values
-  require('telescope.pickers').new(opts, {
+  local picker = require('telescope.pickers').new(opts, {
     prompt_title = title,
     finder = require('telescope.finders').new_dynamic({
       fn = search,
@@ -104,7 +131,28 @@ function M.workspace(kinds, title)
     }),
     previewer = conf.qflist_previewer(opts),
     sorter = require('telescope.sorters').highlighter_only(opts),
-  }):find()
+  })
+  picker:find()
+
+  -- clangd answers from what it has indexed so far: while it indexes (and once after), ask again for
+  -- the prompt every 2 s, and show the new results when they differ
+  local timer = assert(vim.uv.new_timer())
+  local quiet = 0 -- checks since the index stopped
+  timer:start(2000, 2000, vim.schedule_wrap(function()
+    if picker.closed or not vim.api.nvim_buf_is_valid(picker.prompt_bufnr or -1) then
+      if not timer:is_closing() then timer:stop(); timer:close() end
+      return
+    end
+    quiet = require('core.clangd').indexing() and 0 or quiet + 1
+    if quiet > 2 then return end
+    local prompt = picker:_get_prompt()
+    local c = clangd()
+    if not c or prompt == '' or pending then return end
+    c:request('workspace/symbol', { query = prompt }, vim.schedule_wrap(function(err, res)
+      if err or picker.closed or picker:_get_prompt() ~= prompt then return end
+      if signature(items_of(c, res)) ~= shown[prompt] then picker:refresh() end
+    end))
+  end))
 end
 
 function M.functions() M.workspace(FUNCTIONS, 'Find function (clangd)') end

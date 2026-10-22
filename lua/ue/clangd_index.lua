@@ -84,6 +84,7 @@ local function restart()
     if type(msg) == 'string' and msg:find('^Client clangd quit with exit code') then return end
     return notify(msg, ...)
   end
+  local fileless = require('core.symbols').fileless()
   for _, c in ipairs(clients) do c:stop(true) end
   local waited = 0
   local timer = assert(vim.uv.new_timer())
@@ -93,6 +94,7 @@ local function restart()
     timer:stop()
     timer:close()
     vim.lsp.enable('clangd') -- loaded C++ buffers attach to a new clangd
+    require('core.symbols').restart_fileless(fileless)
     vim.defer_fn(function() vim.notify = notify end, 1000)
   end))
 end

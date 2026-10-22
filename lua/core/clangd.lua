@@ -200,10 +200,19 @@ vim.api.nvim_create_autocmd('LspProgress', {
       index = nil
     else
       local done, total = (p.value.message or ''):match('(%d+)/(%d+)')
-      index = { done = tonumber(done), total = tonumber(total), pct = p.value.percentage }
+      index = { client = client.id, done = tonumber(done), total = tonumber(total), pct = p.value.percentage }
     end
   end,
 })
+
+--- True while clangd's background index works. A clangd that stopped (restart, exit) sends no "end":
+--- its last progress no longer counts.
+function M.indexing()
+  if not index then return false end
+  local client = vim.lsp.get_client_by_id(index.client)
+  if not client or client:is_stopped() then index = nil end
+  return index ~= nil
+end
 
 local function threads()
   local cmd = (vim.lsp.config.clangd or {}).cmd or {}
@@ -215,7 +224,7 @@ end
 
 --- Statusline: "󰒓 index 12% · 14 threads" while clangd's background index works.
 function M.index_text()
-  if not index or not index.total or index.total == 0 then return '' end
+  if not M.indexing() or not index.total or index.total == 0 then return '' end
   local pct = index.pct or math.floor(index.done * 100 / index.total)
   local j = threads()
   -- '%%' in a statusline is a literal '%'; a bare '% ' is E539, and lualine stops refreshing
