@@ -148,7 +148,7 @@ local function file_name()
   local flags = (vim.bo[buf].modified and ' ●' or '') .. ((vim.bo[buf].readonly or not vim.bo[buf].modifiable) and ' 󰌾' or '')
   dropped = {} -- measure every item, then hide again
   local widths = {}
-  local room = vim.o.columns - fixed_width() - sw(flags) - 3
+  local room = vim.o.columns - fixed_width() - sw(flags) - 2 -- padding; the last item before the gap has no separator
   for i, o in ipairs(OPTIONAL) do
     widths[i] = cells(o[2])
     room = room - widths[i]
