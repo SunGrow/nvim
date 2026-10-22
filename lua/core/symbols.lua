@@ -43,6 +43,20 @@ function M.ensure_clangd()
   return id and vim.lsp.get_client_by_id(id) or nil
 end
 
+--- clangd reads the compile database, and with it loads its index, only when a file asks for its flags:
+--- a client with no file open answered workspace/symbol with nothing (tested: 0 results after 60 s).
+--- It is told about one instead: didOpen + didClose of an empty file at the project root, no buffer
+--- (tested on V2: 13 results 11 s after startup). That parse costs one preamble build, as opening any
+--- file would (UE: ~300 MB, 20-50 s of one core).
+local kicked = {}
+function M.load_index(client)
+  if not client or kicked[client.id] or next(client.attached_buffers) or not client.root_dir then return end
+  kicked[client.id] = true
+  local uri = vim.uri_from_fname(client.root_dir .. '/.nvim-clangd-index.cpp')
+  client:notify('textDocument/didOpen', { textDocument = { uri = uri, languageId = 'cpp', version = 0, text = '' } })
+  client:notify('textDocument/didClose', { textDocument = { uri = uri } })
+end
+
 --- Live picker over clangd's workspace symbols; kinds: set of LSP kind names, nil for all.
 function M.workspace(kinds, title)
   local client = clangd()
@@ -52,9 +66,12 @@ function M.workspace(kinds, title)
       return vim.notify('No C/C++ project here (no compile_commands.json): open a C++ file first',
         vim.log.levels.WARN, { title = title })
     end
-    vim.notify('Starting clangd: results appear once it has loaded its index (a few seconds)',
-      vim.log.levels.INFO, { title = title })
     vim.wait(15000, function() return client.initialized or client:is_stopped() end, 50)
+  end
+  if not kicked[client.id] and not next(client.attached_buffers) then
+    vim.notify('clangd is loading the project index: results appear in a few seconds (type again)',
+      vim.log.levels.INFO, { title = title })
+    M.load_index(client)
   end
   local channel = require('plenary.async.control').channel
   local pending -- id of the request in flight

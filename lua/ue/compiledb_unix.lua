@@ -314,8 +314,10 @@ function M.setup()
       if reason then return M.generate(reason) end
       if M.add_pch() > 0 then require('ue.compiledb').restart_clangd() end
       -- the project's clangd runs from the start, as in an IDE: class / symbol search works before a
-      -- file is open, and its index is loaded by the time it is used
-      require('core.symbols').ensure_clangd()
+      -- file is open. Its index loads with the first file; with none opened soon, it is asked to load.
+      local symbols = require('core.symbols')
+      local client = symbols.ensure_clangd()
+      vim.defer_fn(function() symbols.load_index(client) end, 3000)
     end)
   end, 1500)
 end
