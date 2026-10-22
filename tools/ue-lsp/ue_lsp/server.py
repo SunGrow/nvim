@@ -74,6 +74,7 @@ class Server:
         self.docs = {}
         self.idx = None
         self.idx_ready = threading.Event()
+        self.idx_checked = threading.Event()  # cache validated or index rebuilt (load_index finished)
         self.indexer = None
         self.utf16 = True
         self.snippets = False
@@ -264,6 +265,12 @@ class Server:
         return cur
 
     def load_index(self):
+        try:
+            self._load_index()
+        finally:
+            self.idx_checked.set()
+
+    def _load_index(self):
         t0 = time.perf_counter()
         d = index.load_derived(self.engine and index.norm(self.engine), self.project and index.norm(self.project))
         if d is not None:
@@ -296,7 +303,9 @@ class Server:
     def on_initialized(self, p):
         if self.project and self.opt("blueprints", "enabled", default=True):
             def later():
-                self.idx_ready.wait(timeout=120)
+                # after validation, not the warm load: both read the engine file table, and
+                # loading it twice at once leaves ~60 MB more resident in this process
+                self.idx_checked.wait(timeout=120)
                 self.ensure_bp()
             threading.Thread(target=later, daemon=True).start()
         return None
