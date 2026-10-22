@@ -212,6 +212,10 @@ function M.ensure_clangd_flag()
     local nl = text:find('\r\n', 1, true) and '\r\n' or '\n'
     text = text:gsub('Diagnostics:' .. nl, function(m) return m .. '  Includes:' .. nl .. '    IgnoreHeader: ' .. M.IGNORE_HEADERS .. nl end, 1)
   end
+  local preamble = require('ue.clangd_preamble')
+  if not text:find(preamble.START, 1, true) then
+    text = text:gsub('[\r\n]*$', nl) .. preamble.CLANGD_FRAGMENT:gsub('\n', nl)
+  end
   if text == old then return false end
   local f = io.open(file, 'wb')
   if not f then return false end

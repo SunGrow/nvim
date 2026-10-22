@@ -19,6 +19,19 @@ local ctx = require('core.context')
 
 local LIST = '/Intermediate/ClangdFullPCH.txt'
 
+-- clangd loads the project's index (enqueues every database file) only when it looks up a file the
+-- light commands do not cover. So each server first opens this empty file, which .clangd gives no
+-- forced includes (it parses at once), and closes it again.
+M.START = 'Intermediate/ClangdStart.cpp'
+M.CLANGD_FRAGMENT = table.concat({
+  '---',
+  'If:',
+  '  PathMatch: ' .. M.START:gsub('%.', '\\.'),
+  'CompileFlags:',
+  '  Remove: [/FI]',
+  '',
+}, '\n')
+
 --- Project root here and as clangd.exe sees it (Windows path).
 local function roots()
   if ctx.is_ue then return ctx.ue_project_root, ctx.ue_project_root end
@@ -181,11 +194,14 @@ end
 --- Called for each clangd client of the project (lsp.lua on_init): light commands go out before each
 --- didOpen.
 function M.attach(client)
-  local _, win_root = roots()
+  local root, win_root = roots()
   if not win_root then return end
   local mine = {} -- path -> { mode = 'light' | 'full', entry, full, errors = set of the light parse }
   M.files = mine
   local notify = client.notify
+  local start_uri = vim.uri_from_fname(root .. '/' .. M.START)
+  local start_path, started = clangd_path(start_uri), false
+  notify(client, 'textDocument/didOpen', { textDocument = { uri = start_uri, languageId = 'cpp', version = 0, text = '' } })
   client.notify = function(self, method, params)
     if method == 'textDocument/didOpen' then
       pcall(function()
@@ -206,6 +222,14 @@ function M.attach(client)
   local method = 'textDocument/publishDiagnostics'
   local show = client.handlers[method]
   client.handlers[method] = function(err, result, hctx, config)
+    if result and clangd_path(result.uri) == start_path then
+      -- parsed: the index is loading; no buffer for it
+      if not started then
+        started = true
+        notify(client, 'textDocument/didClose', { textDocument = { uri = start_uri } })
+      end
+      return
+    end
     local ret = (show or vim.lsp.handlers[method])(err, result, hctx, config)
     pcall(function()
       local path = clangd_path(result.uri)
