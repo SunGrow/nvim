@@ -377,12 +377,15 @@ class Indexer:
             changed += n
         dpath = derived_path(self.engine, self.project)
         stats = {"load_tables": tl - t0, "changed": changed}
-        if changed or not os.path.exists(dpath):
-            d = self.rebuild_derived()
-            stats["total"] = time.perf_counter() - t0
-            return d, stats
+        d = self.rebuild_derived() if changed or not os.path.exists(dpath) else None
+        self.release()
         stats["total"] = time.perf_counter() - t0
-        return None, stats
+        return d, stats
+
+    def release(self):
+        """Drop the engine file table: only a derived-index rebuild reads it, and it is the bulk of this
+        process (UE 5.6: 38k headers, ~60 MB of objects); reloading its pickle takes ~0.1 s."""
+        self.eng_table = None
 
     def rebuild_derived(self):
         if self.specdb is None:
@@ -415,7 +418,9 @@ class Indexer:
             st = os.stat(p)
             self.proj_table[p] = (st.st_mtime_ns, st.st_size, mod if kind == "h" else None, _parse_one(p, kind))
         _save(files_path(self.project), {"version": CACHE_VERSION, "table": self.proj_table})
-        return self.rebuild_derived()
+        d = self.rebuild_derived()
+        self.release()
+        return d
 
 
 def _module_for(path):

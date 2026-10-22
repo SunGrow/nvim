@@ -253,7 +253,8 @@ class BPIndex:
         self.engine = engine
         self.include_actors = include_actors
         self._classes = classes
-        self._records = {}       # file path -> record
+        self._records = {}       # file path -> record, while attributing
+        self._sig = None         # (classes/settings signature, asset files signature) it was built from
         self._by_owner = {}      # (owner, prop) -> [Override]
         self._by_asset = {}      # pkg path / normcase file path -> [Override]
         self._stats = {}
@@ -317,7 +318,9 @@ class BPIndex:
         return self._classes
 
     # ---- build
-    def build(self, workers=None, log=None):
+    def build(self, workers=None, log=None, prev=None):
+        """Scan changed assets and attribute their values. `prev`: the index this one replaces; when it was
+        built from the same classes and no asset changed since, its tables are shared instead of rebuilt."""
         t0 = time.perf_counter()
         log = log or (lambda m: None)
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -344,6 +347,18 @@ class BPIndex:
                 if c.get("module"):
                     da_paths.add("/Script/%s.%s" % (c["module"], n[1:]))
         sig = hashlib.sha1(repr((CACHE_VERSION, sorted(keep_modules), sorted(da_paths), self.include_actors)).encode()).hexdigest()
+        files = self._walk()
+        t_walk = time.perf_counter()
+        fsig = hash(frozenset(files.items()))
+        self._sig = (sig, fsig)
+        if prev is not None and prev._classes is classes and getattr(prev, "_sig", None) == self._sig:
+            self.owners, self._by_owner, self._by_asset, self._bp_super = (
+                prev.owners, prev._by_owner, prev._by_asset, prev._bp_super)
+            self._stats = st = dict(prev._stats)
+            st["rescanned"] = 0
+            st["seconds_total"] = st["seconds_walk"] = t_walk - t0
+            st["seconds_scan"] = st["seconds_attribute"] = 0.0
+            return self.stats()
         cpath = os.path.join(self.cache_dir, "assets-%s.pickle" % _h(self.project))
         old = {}
         try:
@@ -353,8 +368,6 @@ class BPIndex:
                 old = d["table"]
         except Exception:
             pass
-        files = self._walk()
-        t_walk = time.perf_counter()
         todo = [p for p, (sz, mt) in files.items() if p not in old or old[p][0] != sz or old[p][1] != mt]
         table = {p: old[p] for p in files if p in old and p not in set(todo)} if todo else {p: old[p] for p in files if p in old}
         if todo:
@@ -379,7 +392,9 @@ class BPIndex:
             os.replace(tmp, cpath)
         t_scan = time.perf_counter()
         self._records = {p: v[2] for p, v in table.items()}
+        del table, old
         self._attribute()
+        self._records = {}  # the asset records live on in the Override rows; only attribution reads them
         if self.owners.dirty:
             tmp = owners_path + ".tmp%d" % os.getpid()
             with open(tmp, "wb") as f:

@@ -88,6 +88,7 @@ class Server:
         self.bp_lock = threading.Lock()
         self.bp_building = False
         self.bp_built_at = 0.0
+        self.bp_idx = None          # header index self.bp's native classes were read with
         self.bp_memo = {}
         self.impl = None            # enginenav.ImplFinder (lazy)
         self.req_id = 0
@@ -316,12 +317,17 @@ class Server:
             try:
                 from . import bpvalues
                 t0 = time.perf_counter()
-                ix = bpvalues.BPIndex(self.project, engine=self.engine)
-                st = ix.build(log=self.log)
-                first = self.bp is None
-                changed = first or st.get("rescanned", 0) > 0
+                # native classes come from the header index: reuse the previous build's while that index is
+                # unchanged (reading them means loading the engine file table, ~60 MB for a moment)
+                prev = self.bp if self.bp is not None and self.bp_idx is self.idx else None
+                idx_now = self.idx
+                ix = bpvalues.BPIndex(self.project, engine=self.engine, classes=prev and prev._classes)
+                st = ix.build(log=self.log, prev=prev)
+                self.bp_idx = idx_now
+                changed = self.bp is None or ix._by_owner is not self.bp._by_owner
                 self.bp = ix
-                self.bp_memo = {}
+                if changed:
+                    self.bp_memo = {}
                 self.bp_built_at = time.perf_counter()
                 self.log("bp index: %d files, %d rescanned, %d values in %.2fs"
                          % (st.get("files", 0), st.get("rescanned", 0), st.get("properties", 0), time.perf_counter() - t0))
