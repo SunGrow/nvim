@@ -205,11 +205,11 @@ function M.ensure_clangd_flag()
   local flag = M.clangd_flag()
   if not text or not text:find('Add: [-D__INTELLISENSE__', 1, true) then return false end
   local old = text
+  local nl = text:find('\r\n', 1, true) and '\r\n' or '\n'
   if not text:find(flag, 1, true) then
     text = text:gsub(', "/clang:%-iquote[^"]*ClangdUHT"', ''):gsub('Add: %[%-D__INTELLISENSE__', 'Add: [-D__INTELLISENSE__, ' .. flag, 1)
   end
   if not text:find('IgnoreHeader', 1, true) then
-    local nl = text:find('\r\n', 1, true) and '\r\n' or '\n'
     text = text:gsub('Diagnostics:' .. nl, function(m) return m .. '  Includes:' .. nl .. '    IgnoreHeader: ' .. M.IGNORE_HEADERS .. nl end, 1)
   end
   local preamble = require('ue.clangd_preamble')
