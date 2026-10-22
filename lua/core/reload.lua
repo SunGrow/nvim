@@ -151,7 +151,7 @@ end
 function M.apply(files)
   local msgs, failed, specs, later = {}, false, nil, {}
   local function add(ok, msg)
-    if msg then msgs[#msgs + 1] = (ok and '✓ ' or '✗ ') .. msg end
+    if msg then msgs[#msgs + 1] = (ok and '✓ ' or '󰅖 ') .. msg end
     if not ok then failed = true end
   end
   local sorted = vim.tbl_keys(files)

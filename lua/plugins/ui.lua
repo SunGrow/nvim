@@ -7,6 +7,38 @@ local ctx = require('core.context')
 local ue_project_name = ctx.ue_project_name or (ctx.wsl_ue or ctx.ue_unix or {}).name or ''
 local ue_tools = ctx.is_ue
 
+--- The statusline drops its least needed items as the terminal narrows instead of cutting the line at
+--- its start (Neovim's truncation hid the file name behind "<ngd, ue_ls" at 160 columns).
+local function wide(cols) return function() return vim.o.columns >= cols end end
+
+--- The window you work in: a floating window (picker, key sheet, hover) counts as the one under it.
+local function work_win()
+  local win = vim.api.nvim_get_current_win()
+  if vim.api.nvim_win_get_config(win).relative == '' then return win end
+  local prev = vim.fn.win_getid(vim.fn.winnr('#'))
+  if prev ~= 0 and vim.api.nvim_win_get_config(prev).relative == '' then return prev end
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_config(w).relative == '' then return w end
+  end
+  return win
+end
+
+--- File of that window, relative to the working directory; directories shortened when it is long.
+local function file_name()
+  local buf = vim.api.nvim_win_get_buf(work_win())
+  local name = vim.api.nvim_buf_get_name(buf)
+  if vim.bo[buf].buftype ~= '' or name == '' then
+    local ft = vim.bo[buf].filetype
+    return name ~= '' and vim.fn.fnamemodify(name, ':t') or (ft ~= '' and ft or '[No Name]')
+  end
+  local path = vim.fn.fnamemodify(name, ':~:.')
+  local room = math.max(24, vim.o.columns - 110)
+  if vim.fn.strdisplaywidth(path) > room then path = vim.fn.pathshorten(path, 3) end
+  if vim.fn.strdisplaywidth(path) > room then path = vim.fn.fnamemodify(name, ':t') end
+  local flags = (vim.bo[buf].modified and ' ●' or '') .. ((vim.bo[buf].readonly or not vim.bo[buf].modifiable) and ' 󰌾' or '')
+  return path .. flags
+end
+
 return {
   -- Status line
   {
@@ -24,28 +56,18 @@ return {
       end
       -- NOTE: LSP progress display is handled by fidget.nvim, not the statusline.
     end,
+    -- left: what you edit (file, its git and error state, clangd's progress on it); right: the project
+    -- and its run configuration, then help and the cursor position
     opts = {
       options = {
         globalstatus = true,
       },
       sections = {
         lualine_a = { 'mode' },
-        lualine_b = { 'branch', 'diff', 'diagnostics' },
+        lualine_b = { { 'branch', cond = wide(110) }, 'diff' },
         lualine_c = {
-          { 'filename', path = 1 },
-          {
-            function()
-              local clients = vim.lsp.get_clients({ bufnr = 0 })
-              if #clients == 0 then return '' end
-              local names = {}
-              for _, c in ipairs(clients) do
-                names[#names + 1] = c.name
-              end
-              return table.concat(names, ', ')
-            end,
-            icon = '',
-            color = { fg = '#7aa2f7' },
-          },
+          { file_name },
+          'diagnostics',
           {
             -- clangd still parsing this file (no semantic colors / navigation yet): "⠋ building preamble";
             -- with no file: "⠋ compile db", "⠋ clangd loading index" (lua/core/clangd.lua)
@@ -58,17 +80,19 @@ return {
             end,
           },
           {
-            -- clangd's background index while it runs: "⚙ index 12% (14 threads)"; click for details
+            -- clangd's background index while it runs: "󰒓 index 12% · 14 threads"; click for details
             function() return require('core.clangd').index_text() end,
             color = { fg = '#7dcfff' },
-            cond = function() return package.loaded['core.clangd'] ~= nil end,
+            cond = function() return package.loaded['core.clangd'] ~= nil and vim.o.columns >= 130 end,
             on_click = function() require('core.clangd').index_details() end,
           },
+        },
+        lualine_x = {
           {
             function() return ue_project_name end,
             icon = '󰿅',
             color = { fg = '#9ece6a' },
-            cond = function() return ue_project_name ~= '' end,
+            cond = function() return ue_project_name ~= '' and vim.o.columns >= 120 end,
           },
           {
             -- UE index / server activity: "UE ⠋ indexing 42%", "UE ✓" when ready (lua/ue/status.lua)
@@ -86,27 +110,26 @@ return {
             cond = function() return ue_project_name ~= '' end,
             on_click = function() require('ue.run').pick() end,
           },
-          -- NOTE: LSP progress is handled by fidget.nvim (top-right spinner).
-          -- fidget consumes the LSP progress ring buffer, so vim.lsp.status()
-          -- returns empty when fidget is active. Don't duplicate it here.
-        },
-        lualine_x = {
           {
             -- where to start when you do not know what to press (lua/core/keyhelp.lua)
             function() return 'F1 keys' end,
-            icon = '⌨',
+            icon = '󰌌',
             color = { fg = '#7aa2f7' },
+            cond = wide(100),
             on_click = function() require('core.keyhelp').show() end,
           },
           {
-            function() return ram_mb .. 'MB' end,
+            function() return ram_mb .. ' MB' end,
             icon = '',
             color = { fg = '#e0af68' },
+            cond = wide(140),
           },
-          'encoding',
-          'filetype',
+          -- only when it is not the usual UTF-8 / Unix
+          { 'encoding', cond = function() return vim.bo.fileencoding ~= '' and vim.bo.fileencoding ~= 'utf-8' end },
+          { 'fileformat', cond = function() return vim.bo.fileformat ~= 'unix' and vim.bo.fileformat ~= 'dos' end },
+          { 'filetype', cond = wide(150) },
         },
-        lualine_y = { 'progress' },
+        lualine_y = {},
         lualine_z = { 'location' },
       },
     },
@@ -155,12 +178,13 @@ return {
     opts = {
       delay = 0,
       icons = {
-        breadcrumb = '> ',
-        separator = '->',
+        breadcrumb = '»',
+        separator = '→',
         group = '+',
-        ellipsis = '...',
-        mappings = true,
-        -- Keep icon coloring predictable across themes.
+        ellipsis = '…',
+        -- no icon column: it repeated the key as a letter ("b  B +Build") and fell back to emoji the
+        -- terminal font lacks; the descriptions say what an entry does
+        mappings = false,
         colors = false,
         -- Force readable footer hints for which-key actions (close/back).
         keys = {
@@ -174,28 +198,16 @@ return {
           Esc = 'Esc ',
           BS = 'BS ',
         },
-        -- Font-safe fallback icon rules so icons still render without Nerd Font glyphs.
-        rules = {
-          { pattern = 'find', icon = '⌕ ' },
-          { pattern = 'grep', icon = '⌕ ' },
-          { pattern = 'build', icon = '⚙ ' },
-          { pattern = 'debug', icon = '🐞 ' },
-          { pattern = 'class', icon = 'C ' },
-          { pattern = 'struct', icon = 'S ' },
-          { pattern = 'enum', icon = 'E ' },
-          { pattern = 'include', icon = 'I ' },
-          { pattern = 'unreal', icon = 'U ' },
-        },
       },
       spec = {
-        { '<leader>f', group = 'Find', icon = '⌕ ' },
-        { '<leader>g', group = 'Git', icon = 'G ' },
-        { '<leader>l', group = 'LSP', icon = 'L ' },
-        { '<leader>c', group = 'Code', icon = 'C ' },
-        { '<leader>b', group = 'Build', icon = 'B ' },
-        { '<leader>u', group = 'UI', icon = 'UI' },
-        { '<leader>d', group = 'Debug', icon = '🐞 ' },
-        { '<leader>U', group = 'Unreal', icon = 'U ' },
+        { '<leader>f', group = 'Find' },
+        { '<leader>g', group = 'Git' },
+        { '<leader>l', group = 'LSP' },
+        { '<leader>c', group = 'Code' },
+        { '<leader>b', group = 'Build' },
+        { '<leader>u', group = 'UI' },
+        { '<leader>d', group = 'Debug' },
+        { '<leader>U', group = 'Unreal' },
       },
     },
   },

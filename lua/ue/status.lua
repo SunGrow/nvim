@@ -4,7 +4,7 @@
 --   "UE ⠋ scanning"      asset scan / file updates / other server work
 --   "UE ⠋ compile db"    clangd's compile_commands.json being regenerated (ue/compiledb.lua)
 --   "UE ✓"               idle: index ready
---   "UE ✗"               server not reachable
+--   "UE 󰅖"               server not reachable
 -- Server state comes from UNL.status (polls the server's cheap simple_status); the percentage
 -- comes from UNL's refresh progress events through the global event hook (UNL.status itself uses
 -- the per-category hook, so both coexist).
@@ -69,7 +69,7 @@ function M.text()
   local st = state()
   local frame = SPIN[(math.floor(vim.uv.now() / 120) % #SPIN) + 1]
   if cdb_busy() and (st == 'offline' or QUIET[st]) then return 'UE ' .. frame .. ' compile db' end
-  if st == 'offline' then return 'UE ✗' end
+  if st == 'offline' then return 'UE 󰅖' end
   if QUIET[st] then return 'UE ✓' end
   local label = BUSY_LABEL[st] or st
   if st == 'refreshing' and refresh then

@@ -181,24 +181,32 @@ local function caps()
   return s and s.capabilities or {}
 end
 
--- Panel title bars: what the panel is and how to use it. Short enough for a 45-column panel; %<
--- drops the tail first when a panel is narrower.
+-- Panel title bars: what the panel is, then its keys. Each returns the title and the hints, most
+-- needed first; `M.winbar` keeps as many hints as the panel width holds (Neovim's `%<` cut the hints
+-- at their start: "Call stack <lick/⏎ open frame").
 local TITLES = {
   dapui_breakpoints = function()
-    -- " Breakpoints (1) [x] ensure [ ] throw [x] AV" fits the 44-column panel of a 180-column screen
-    return ('%%#Title# Breakpoints (%d) %%*%%<%s'):format(count_breakpoints(), filter_boxes(false))
+    -- the exception checkboxes, also in the toolbar: "[x] ensure [ ] throw [x] AV"
+    local boxes = filter_boxes(false)
+    return ('Breakpoints (%d)'):format(count_breakpoints()), { boxes ~= '' and boxes or nil }
   end,
   dapui_scopes = function()
-    return '%#Title# Variables %*%<  ⏎ expand' .. (caps().supportsSetVariable and ' · e edit' or '') .. ' · ? keys'
+    return 'Variables', { '⏎ expand', caps().supportsSetVariable and 'e edit' or nil, '? keys' }
   end,
-  dapui_stacks = function() return '%#Title# Call stack %*%<  click/⏎ open frame · ? keys' end,
-  dapui_watches = function() return '%#Title# Watches %*%<  i add · d delete · ? keys' end,
+  dapui_stacks = function() return 'Call stack', { 'click/⏎ open frame', '? keys' } end,
+  dapui_watches = function() return 'Watches', { 'i add', 'd delete', '? keys' } end,
   ['dap-repl'] = function()
     -- codelldb's console is in lldb's "commands" mode: `?expr` evaluates, the rest are lldb commands
-    local how = adapter() == 'codelldb' and '?expr evaluates · lldb commands' or 'type an expression, ⏎ evaluates'
-    return '%#Title# Debug console %*%<  ' .. how .. ' · ? keys'
+    if adapter() == 'codelldb' then return 'Debug console', { '?expr evaluates', 'lldb commands', '? keys' } end
+    return 'Debug console', { 'type an expression, ⏎ evaluates', '? keys' }
   end,
 }
+
+--- Display width of statusline text (highlight, click and %% codes take no cells).
+local function stl_width(s)
+  s = s:gsub('%%#[^#]*#', ''):gsub('%%%*', ''):gsub('%%%d*@[^@]*@', ''):gsub('%%X', ''):gsub('%%%%', '%%')
+  return vim.fn.strdisplaywidth(s)
+end
 
 -- Every debugger key, in the order a newcomer needs them: the toolbar, `?` and F1 are made from this.
 -- key: as shown; lhs: the mapping (checked by the F1 sheet); ue: dbgeng-dap only (Unreal on Windows, also from WSL).
@@ -258,7 +266,21 @@ end
 --- Winbar text for a dap-ui panel (evaluated on every redraw).
 function M.winbar(ft)
   local f = TITLES[ft]
-  return f and f() or ''
+  if not f then return '' end
+  local title, hints = f()
+  local win = vim.g.statusline_winid or 0
+  local room = (vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_width(win) or 80) - #title - 3
+  local kept = {}
+  for i = 1, table.maxn(hints) do
+    local h = hints[i]
+    if h then
+      local text = table.concat(vim.list_extend(vim.list_slice(kept), { h }), ' · ')
+      if stl_width(text) > room then break end
+      kept[#kept + 1] = h
+    end
+  end
+  local tail = #kept > 0 and ('  ' .. table.concat(kept, ' · ')) or ''
+  return '%#Title# ' .. title .. ' %*' .. tail
 end
 
 local function set_winbars(buf)
@@ -375,7 +397,7 @@ local function state_text(session, where)
     local file = f.source and f.source.path and vim.fn.fnamemodify(f.source.path, ':t')
     loc = ' in ' .. (f.name or '?'):gsub('%(.*', '') .. (file and (' (%s:%d)'):format(file, f.line) or '')
   end
-  return ' ⏸ Paused ' .. why .. loc .. ' ', 'DapToolbarPaused'
+  return ' 󰏤 Paused ' .. why .. loc .. ' ', 'DapToolbarPaused'
 end
 
 --- Tabline while debugging: the state, then the buttons usable now (paused: no Pause; running: no

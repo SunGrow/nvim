@@ -16,7 +16,7 @@ map('n', '<Esc>', '<cmd>nohlsearch<CR>', { desc = 'Clear search highlight' })
 map('n', '<leader>w', '<C-W>', { desc = 'Window mode' })
 
 -- File explorer (netrw)
-map('n', '<leader>e', ':Ex<CR>', { desc = 'File explorer' })
+map('n', '<leader>e', '<cmd>Ex<CR>', { desc = 'File explorer' })
 
 -- Quick save
 map('n', '<leader>s', '<cmd>w<CR>', { desc = 'Save file' })
