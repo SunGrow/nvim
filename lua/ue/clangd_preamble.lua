@@ -288,13 +288,20 @@ function M.attach(client)
   local root, win_root = roots()
   if not win_root then return end
   -- path -> { mode = 'light' | 'full', entry, full, pch, extra = added headers, rounds,
-  --           errors = the light parse's (to compare with the full PCH's), busy = looking up names }
+  --           errors = the light parse's (to compare with the full PCH's), busy = looking up names,
+  --           pending = last diagnostics, seen_busy = clangd worked on it since the last command }
   local mine = {}
   M.files = mine
   local notify = client.notify
   local start_uri = vim.uri_from_fname(root .. '/' .. M.START)
   local start_path, started = clangd_path(start_uri), false
   notify(client, 'textDocument/didOpen', { textDocument = { uri = start_uri, languageId = 'cpp', version = 0, text = '' } })
+
+  local function use(path, f, argv)
+    f.pending, f.seen_busy = nil, false
+    send(client, path, f.entry, argv)
+  end
+
   client.notify = function(self, method, params)
     if method == 'textDocument/didOpen' then
       pcall(function()
@@ -309,12 +316,63 @@ function M.attach(client)
         local full, pch, light = commands(e, extra)
         if not light then return end
         mine[path] = { mode = 'light', entry = e, full = full, pch = pch, extra = extra, rounds = #extra > 0 and 1 or 0 }
-        send(self, path, e, light)
+        use(path, mine[path], light)
       end)
     end
     return notify(self, method, params)
   end
 
+  --- The diagnostics of a finished parse: add headers or the full PCH for errors, or check the full
+  --- PCH's.
+  local function decide(uri, path, f)
+    local diagnostics = f.pending
+    f.pending = nil
+    if f.busy or vim.bo[vim.uri_to_bufnr(uri)].modified then return end
+    local set, n = errors(diagnostics)
+    local name = vim.fs.basename(key(path))
+    if f.mode == 'light' then
+      if n == 0 then return end
+      local function full_pch()
+        f.mode, f.errors = 'full', set
+        remember(path, true)
+        use(path, f, f.full)
+        say(("%s: %d errors without the module's PCH; parsing again with it (remembered)"):format(name, n))
+      end
+      local allowed = f.rounds < 3 and pch_headers(f.pch)
+      if not allowed then return full_pch() end
+      f.busy = true
+      headers_for(client, missing_names(diagnostics), allowed, function(headers)
+        f.busy = false
+        pcall(function()
+          local new = {}
+          for _, h in ipairs(headers) do
+            if not vim.tbl_contains(f.extra, h) then new[#new + 1] = h end
+          end
+          if #new == 0 then return full_pch() end
+          vim.list_extend(f.extra, new)
+          f.rounds = f.rounds + 1
+          remember(path, f.extra)
+          local _, _, light = commands(f.entry, f.extra)
+          use(path, f, light)
+          local names = vim.tbl_map(function(h) return vim.fs.basename(key(h)) end, new)
+          say(("%s: %d errors without the module's PCH; adding %s from it (remembered)")
+            :format(name, n, table.concat(names, ', ')))
+        end)
+      end)
+    elseif f.errors then
+      -- the same errors with the full PCH mean real ones, not a missing include
+      local same = n > 0
+      for k in pairs(f.errors) do
+        if not set[k] then same = false break end
+      end
+      f.errors = nil
+      if same then remember(path, nil) end
+    end
+  end
+
+  -- While a new preamble is being built, clangd publishes a parse made with the previous one (the same
+  -- errors), and it still reports "parsing includes" when the new parse is published: the last
+  -- diagnostics are judged once clangd reports the file idle.
   local method = 'textDocument/publishDiagnostics'
   local show = client.handlers[method]
   client.handlers[method] = function(err, result, hctx, config)
@@ -330,49 +388,25 @@ function M.attach(client)
     pcall(function()
       local path = clangd_path(result.uri)
       local f = path and mine[path]
-      local buf = f and vim.uri_to_bufnr(result.uri)
-      if not f or f.busy or vim.bo[buf].modified then return end
-      -- while a new preamble is being built, clangd publishes a parse made with the previous one
-      if (require('core.clangd').file_state(result.uri) or ''):find('parsing includes', 1, true) then return end
-      local set, n = errors(result.diagnostics)
-      local name = vim.fs.basename(key(path))
-      if f.mode == 'light' then
-        if n == 0 then return end
-        local function full_pch()
-          f.mode, f.errors = 'full', set
-          remember(path, true)
-          send(client, path, f.entry, f.full)
-          say(("%s: %d errors without the module's PCH; parsing again with it (remembered)"):format(name, n))
-        end
-        local allowed = f.rounds < 3 and pch_headers(f.pch)
-        if not allowed then return full_pch() end
-        f.busy = true
-        headers_for(client, missing_names(result.diagnostics), allowed, function(headers)
-          f.busy = false
-          pcall(function()
-            local new = {}
-            for _, h in ipairs(headers) do
-              if not vim.tbl_contains(f.extra, h) then new[#new + 1] = h end
-            end
-            if #new == 0 then return full_pch() end
-            vim.list_extend(f.extra, new)
-            f.rounds = f.rounds + 1
-            remember(path, f.extra)
-            local _, _, light = commands(f.entry, f.extra)
-            send(client, path, f.entry, light)
-            local names = vim.tbl_map(function(h) return vim.fs.basename(key(h)) end, new)
-            say(("%s: %d errors without the module's PCH; adding %s from it (remembered)")
-              :format(name, n, table.concat(names, ', ')))
-          end)
-        end)
-      elseif f.errors then
-        -- the same errors with the full PCH mean real ones, not a missing include
-        local same = n > 0
-        for k in pairs(f.errors) do
-          if not set[k] then same = false break end
-        end
-        f.errors = nil
-        if same then remember(path, nil) end
+      if not f then return end
+      f.pending = result.diagnostics
+      if f.seen_busy and require('core.clangd').file_state(result.uri) == 'idle' then decide(result.uri, path, f) end
+    end)
+    return ret
+  end
+
+  local status = 'textDocument/clangd.fileStatus'
+  local on_status = client.handlers[status]
+  client.handlers[status] = function(err, result, hctx, config)
+    local ret = on_status and on_status(err, result, hctx, config)
+    pcall(function()
+      local path = clangd_path(result.uri)
+      local f = path and mine[path]
+      if not f then return end
+      if result.state ~= 'idle' then
+        f.seen_busy = true
+      elseif f.seen_busy and f.pending then
+        decide(result.uri, path, f)
       end
     end)
     return ret
