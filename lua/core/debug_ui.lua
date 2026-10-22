@@ -362,7 +362,7 @@ local BUTTONS = {
 
 local REASONS = { breakpoint = 'at a breakpoint', step = 'after a step', pause = 'paused by you',
   entry = 'at the program start', exception = 'on an exception', ['function breakpoint'] = 'at a breakpoint',
-  goto = 'at the cursor' }
+  ['goto'] = 'at the cursor' }
 
 --- "Paused at a breakpoint in add_points (demo.c:8)" / "Running"; plain text and highlight group.
 --- where = false leaves out the function and file (narrow screens; the code shows them anyway).
