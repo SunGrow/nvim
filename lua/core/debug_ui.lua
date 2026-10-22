@@ -161,7 +161,7 @@ end
 --- The debugger is (or F5 would start) dbgeng-dap: Unreal on Windows, also from WSL.
 function M.dbgeng() return adapter() == 'dbgeng' end
 
---- Exception settings as clickable checkboxes ("[x] ensure  [ ] C++ throw  [x] AV  2 ignored").
+--- Exception settings as clickable checkboxes ("󰄲 ensure  󰄱 C++ throw  󰄲 AV  2 ignored").
 --- They are dbgeng-dap's filters: empty for other debuggers.
 local function filter_boxes(labels)
   if adapter() ~= 'dbgeng' then return '' end
@@ -169,7 +169,7 @@ local function filter_boxes(labels)
   for _, f in ipairs(M.FILTERS) do
     local on = load()[f.id]
     parts[#parts + 1] = ('%%#%s#%%0@v:lua._debug_ui.%s@%s %s%%X%%*'):format(
-      on and 'DapUIDebugOnBox' or 'DapUIDebugOffBox', f.id, on and '[x]' or '[ ]', labels and f.label or f.short)
+      on and 'DapUIDebugOnBox' or 'DapUIDebugOffBox', f.id, on and '󰄲' or '󰄱', labels and f.label or f.short)
   end
   if #ignored > 0 then parts[#parts + 1] = ('%%0@v:lua._debug_ui.pick@%d ignored%%X'):format(#ignored) end
   return table.concat(parts, labels and '  ' or ' ')
@@ -186,9 +186,10 @@ end
 -- at their start: "Call stack <lick/⏎ open frame").
 local TITLES = {
   dapui_breakpoints = function()
-    -- the exception checkboxes, also in the toolbar: "[x] ensure [ ] throw [x] AV"
+    -- the exception checkboxes, also in the toolbar: "󰄲 ensure 󰄱 throw 󰄲 AV"; the count goes first
+    -- when they do not fit beside it (a 160-column screen)
     local boxes = filter_boxes(false)
-    return ('Breakpoints (%d)'):format(count_breakpoints()), { boxes ~= '' and boxes or nil }
+    return ('Breakpoints (%d)'):format(count_breakpoints()), { boxes ~= '' and boxes or nil }, 'Breakpoints'
   end,
   dapui_scopes = function()
     return 'Variables', { '⏎ expand', caps().supportsSetVariable and 'e edit' or nil, '? keys' }
@@ -239,7 +240,7 @@ M.KEYS = {
 local PANEL_HELP = {
   'In the panels',
   '  Call stack    click / ⏎ go to the frame · t show/hide library frames',
-  '  Breakpoints   click / ⏎ go to it · t enable/disable · d delete · click [x] to toggle an exception',
+  '  Breakpoints   click / ⏎ go to it · t enable/disable · d delete · click a checkbox to toggle an exception',
   '  Variables     ⏎ / double-click expand · r copy to the console',
   '  Watches       i type an expression, ⏎ adds it · d delete · ⏎ expand',
   '  Console       an expression or a debugger command, ⏎ runs it (codelldb: ?expr evaluates)',
@@ -267,9 +268,12 @@ end
 function M.winbar(ft)
   local f = TITLES[ft]
   if not f then return '' end
-  local title, hints = f()
+  local title, hints, short = f()
   local win = vim.g.statusline_winid or 0
-  local room = (vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_width(win) or 80) - #title - 3
+  local width = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_width(win) or 80
+  -- " Title " then two spaces before the hints
+  if short and hints[1] and stl_width(hints[1]) > width - #title - 4 then title = short end
+  local room = width - #title - 4
   local kept = {}
   for i = 1, table.maxn(hints) do
     local h = hints[i]

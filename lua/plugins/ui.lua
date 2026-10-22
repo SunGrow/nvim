@@ -7,9 +7,108 @@ local ctx = require('core.context')
 local ue_project_name = ctx.ue_project_name or (ctx.wsl_ue or ctx.ue_unix or {}).name or ''
 local ue_tools = ctx.is_ue
 
---- The statusline drops its least needed items as the terminal narrows instead of cutting the line at
---- its start (Neovim's truncation hid the file name behind "<ngd, ue_ls" at 160 columns).
+--- The statusline drops its least needed items as the terminal narrows, and the file path gives up its
+--- leading folders to fit what is left, so Neovim never cuts the line (it cut at the start of the file
+--- name: "<ngd, ue_ls" at 160 columns).
 local function wide(cols) return function() return vim.o.columns >= cols end end
+local sw = vim.api.nvim_strwidth
+
+-- Our components: shown by lualine, and measured by `file_name` (as icon .. ' ' .. text).
+local clangd_state = {
+  -- clangd still parsing this file (no semantic colors / navigation yet): "⠋ building preamble";
+  -- with no file: "⠋ compile db", "⠋ clangd loading index" (lua/core/clangd.lua)
+  function() return require('core.clangd').text() end,
+  color = { fg = '#e0af68' },
+  cond = function()
+    return package.loaded['core.clangd'] ~= nil
+      or (package.loaded['core.compiledb'] ~= nil and require('core.compiledb').busy())
+      or (package.loaded['ue.compiledb_unix'] ~= nil and require('ue.compiledb_unix').busy())
+  end,
+}
+local clangd_index = {
+  -- clangd's background index while it runs: "󰒓 index 12% · 14 threads"; click for details
+  function() return require('core.clangd').index_text() end,
+  color = { fg = '#7dcfff' },
+  cond = function() return package.loaded['core.clangd'] ~= nil and vim.o.columns >= 130 end,
+  on_click = function() require('core.clangd').index_details() end,
+}
+local project = {
+  function() return ue_project_name end,
+  icon = '󰿅',
+  color = { fg = '#9ece6a' },
+  cond = function() return ue_project_name ~= '' and vim.o.columns >= 170 end,
+}
+local ue_state = {
+  -- UE index / server activity: "UE ⠋ indexing 42%", "UE ✓" when ready (lua/ue/status.lua)
+  function() return require('ue.status').text() end,
+  color = function() return require('ue.status').color() end,
+  cond = function() return ue_tools end,
+  on_click = function() vim.cmd('UNL status') end,
+}
+local run_config = {
+  -- selected run configuration, like Rider's toolbar dropdown; click to choose another
+  -- (also WSL / Linux / macOS: lua/ue/run.lua)
+  function() return require('ue.run').status() end,
+  icon = '▶',
+  color = { fg = '#e0af68' },
+  cond = function() return ue_project_name ~= '' end,
+  on_click = function() require('ue.run').pick() end,
+}
+local keys = {
+  -- where to start when you do not know what to press (lua/core/keyhelp.lua)
+  function() return 'F1 keys' end,
+  icon = '󰌌',
+  color = { fg = '#7aa2f7' },
+  cond = wide(100),
+  on_click = function() require('core.keyhelp').show() end,
+}
+local ram = {
+  function() return ram_mb .. ' MB' end,
+  icon = '',
+  color = { fg = '#e0af68' },
+  cond = wide(190),
+}
+local MEASURED = { clangd_state, clangd_index, project, ue_state, run_config, keys, ram }
+
+--- Cells the statusline uses besides the file name: each component is its text, a space on both sides
+--- and a separator. lualine's own components are estimated.
+local function others_width()
+  local w = 0
+  local function add(t) if t and t ~= '' then w = w + sw(t) + 3 end end
+  add(require('lualine.utils.mode').get_mode())
+  if vim.o.columns >= 110 then
+    local ok, branch = pcall(function() return require('lualine.components.branch.git_branch').get_branch() end)
+    if ok and branch then add('  ' .. branch) end
+  end
+  local d = vim.b.gitsigns_status_dict
+  if d then
+    for _, k in ipairs({ 'added', 'changed', 'removed' }) do
+      if (d[k] or 0) > 0 then w = w + 2 + #tostring(d[k]) end
+    end
+  end
+  for _, n in pairs(vim.diagnostic.count(0)) do w = w + 3 + #tostring(n) end
+  for _, c in ipairs(MEASURED) do
+    if not c.cond or c.cond() then
+      local ok, t = pcall(c[1])
+      if ok and t and t ~= '' then add((c.icon and (c.icon .. ' ') or '') .. t) end
+    end
+  end
+  if vim.o.columns >= 170 and vim.bo.filetype ~= '' then add('  ' .. vim.bo.filetype) end
+  return w + 10 -- location "123:45" and its separator
+end
+
+--- `path` in `room` cells: the leading folders give way first ("…\Framework\GameState\Foo.cpp").
+local function fit_path(path, room)
+  if sw(path) <= room then return path end
+  local sep = path:match('[\\/]') or '/'
+  local parts = vim.split(path, '[\\/]')
+  while #parts > 1 do
+    table.remove(parts, 1)
+    local short = '…' .. sep .. table.concat(parts, sep)
+    if sw(short) <= room then return short end
+  end
+  return parts[1]
+end
 
 --- The window you work in: a floating window (picker, key sheet, hover) counts as the one under it.
 local function work_win()
@@ -23,7 +122,7 @@ local function work_win()
   return win
 end
 
---- File of that window, relative to the working directory; directories shortened when it is long.
+--- File of that window, relative to the working directory, with ● when modified and 󰌾 when read-only.
 local function file_name()
   local buf = vim.api.nvim_win_get_buf(work_win())
   local name = vim.api.nvim_buf_get_name(buf)
@@ -31,12 +130,9 @@ local function file_name()
     local ft = vim.bo[buf].filetype
     return name ~= '' and vim.fn.fnamemodify(name, ':t') or (ft ~= '' and ft or '[No Name]')
   end
-  local path = vim.fn.fnamemodify(name, ':~:.')
-  local room = math.max(24, vim.o.columns - 110)
-  if vim.fn.strdisplaywidth(path) > room then path = vim.fn.pathshorten(path, 3) end
-  if vim.fn.strdisplaywidth(path) > room then path = vim.fn.fnamemodify(name, ':t') end
   local flags = (vim.bo[buf].modified and ' ●' or '') .. ((vim.bo[buf].readonly or not vim.bo[buf].modifiable) and ' 󰌾' or '')
-  return path .. flags
+  local room = vim.o.columns - others_width() - 3 - sw(flags)
+  return fit_path(vim.fn.fnamemodify(name, ':~:.'), math.max(room, 12)) .. flags
 end
 
 return {
@@ -57,7 +153,9 @@ return {
       -- NOTE: LSP progress display is handled by fidget.nvim, not the statusline.
     end,
     -- left: what you edit (file, its git and error state, clangd's progress on it); right: the project
-    -- and its run configuration, then help and the cursor position
+    -- and its run configuration, then help and the cursor position. Items drop out as the terminal
+    -- narrows: RAM below 190 columns, project name and file type below 170, index below 130, branch
+    -- below 110, "F1 keys" below 100.
     opts = {
       options = {
         globalstatus = true,
@@ -65,69 +163,17 @@ return {
       sections = {
         lualine_a = { 'mode' },
         lualine_b = { { 'branch', cond = wide(110) }, 'diff' },
-        lualine_c = {
-          { file_name },
-          'diagnostics',
-          {
-            -- clangd still parsing this file (no semantic colors / navigation yet): "⠋ building preamble";
-            -- with no file: "⠋ compile db", "⠋ clangd loading index" (lua/core/clangd.lua)
-            function() return require('core.clangd').text() end,
-            color = { fg = '#e0af68' },
-            cond = function()
-              return package.loaded['core.clangd'] ~= nil
-                or (package.loaded['core.compiledb'] ~= nil and require('core.compiledb').busy())
-                or (package.loaded['ue.compiledb_unix'] ~= nil and require('ue.compiledb_unix').busy())
-            end,
-          },
-          {
-            -- clangd's background index while it runs: "󰒓 index 12% · 14 threads"; click for details
-            function() return require('core.clangd').index_text() end,
-            color = { fg = '#7dcfff' },
-            cond = function() return package.loaded['core.clangd'] ~= nil and vim.o.columns >= 130 end,
-            on_click = function() require('core.clangd').index_details() end,
-          },
-        },
+        lualine_c = { { file_name }, 'diagnostics', clangd_state, clangd_index },
         lualine_x = {
-          {
-            function() return ue_project_name end,
-            icon = '󰿅',
-            color = { fg = '#9ece6a' },
-            cond = function() return ue_project_name ~= '' and vim.o.columns >= 120 end,
-          },
-          {
-            -- UE index / server activity: "UE ⠋ indexing 42%", "UE ✓" when ready (lua/ue/status.lua)
-            function() return require('ue.status').text() end,
-            color = function() return require('ue.status').color() end,
-            cond = function() return ue_tools end,
-            on_click = function() vim.cmd('UNL status') end,
-          },
-          {
-            -- selected run configuration, like Rider's toolbar dropdown; click to choose another
-            -- (also WSL / Linux / macOS: lua/ue/run.lua)
-            function() return require('ue.run').status() end,
-            icon = '▶',
-            color = { fg = '#e0af68' },
-            cond = function() return ue_project_name ~= '' end,
-            on_click = function() require('ue.run').pick() end,
-          },
-          {
-            -- where to start when you do not know what to press (lua/core/keyhelp.lua)
-            function() return 'F1 keys' end,
-            icon = '󰌌',
-            color = { fg = '#7aa2f7' },
-            cond = wide(100),
-            on_click = function() require('core.keyhelp').show() end,
-          },
-          {
-            function() return ram_mb .. ' MB' end,
-            icon = '',
-            color = { fg = '#e0af68' },
-            cond = wide(140),
-          },
+          project,
+          ue_state,
+          run_config,
+          keys,
+          ram,
           -- only when it is not the usual UTF-8 / Unix
           { 'encoding', cond = function() return vim.bo.fileencoding ~= '' and vim.bo.fileencoding ~= 'utf-8' end },
           { 'fileformat', cond = function() return vim.bo.fileformat ~= 'unix' and vim.bo.fileformat ~= 'dos' end },
-          { 'filetype', cond = wide(150) },
+          { 'filetype', cond = wide(170) },
         },
         lualine_y = {},
         lualine_z = { 'location' },

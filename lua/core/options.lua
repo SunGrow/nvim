@@ -7,7 +7,7 @@ vim.opt.number = true
 vim.opt.relativenumber = true
 -- Signs, then the numbers right-aligned in one column: with 'relativenumber' Neovim puts the current
 -- line's number at the left edge, out of line with the rest. Wrapped continuation lines stay blank.
-vim.opt.statuscolumn = "%s%=%{v:virtnum > 0 ? '' : (&rnu && v:relnum ? v:relnum : (&nu || &rnu ? v:lnum : ''))} "
+vim.opt.statuscolumn = "%s%=%{v:virtnum > 0 || !(&nu || &rnu) ? '' : (&rnu && v:relnum ? v:relnum : v:lnum) .. ' '}"
 -- netrw (Space e) without its six-line banner
 vim.g.netrw_banner = 0
 
