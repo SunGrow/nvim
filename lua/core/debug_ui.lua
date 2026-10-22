@@ -271,9 +271,9 @@ function M.winbar(ft)
   local title, hints, short = f()
   local win = vim.g.statusline_winid or 0
   local width = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_width(win) or 80
-  -- " Title " then two spaces before the hints
-  if short and hints[1] and stl_width(hints[1]) > width - #title - 4 then title = short end
-  local room = width - #title - 4
+  -- the title at the left edge, in line with the panel's text, then three spaces before the hints
+  if short and hints[1] and stl_width(hints[1]) > width - #title - 3 then title = short end
+  local room = width - #title - 3
   local kept = {}
   for i = 1, table.maxn(hints) do
     local h = hints[i]
@@ -283,8 +283,8 @@ function M.winbar(ft)
       kept[#kept + 1] = h
     end
   end
-  local tail = #kept > 0 and ('  ' .. table.concat(kept, ' · ')) or ''
-  return '%#Title# ' .. title .. ' %*' .. tail
+  local tail = #kept > 0 and ('   ' .. table.concat(kept, ' · ')) or ''
+  return '%#Title#' .. title .. '%*' .. tail
 end
 
 local function set_winbars(buf)
