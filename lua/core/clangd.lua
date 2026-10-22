@@ -224,7 +224,7 @@ end
 
 --- Statusline: "󰒓 index 12% · 14 threads" while clangd's background index works.
 function M.index_text()
-  if not M.indexing() or not index.total or index.total == 0 then return '' end
+  if not M.indexing() or not index or not index.total or index.total == 0 then return '' end
   local pct = index.pct or math.floor(index.done * 100 / index.total)
   local j = threads()
   -- '%%' in a statusline is a literal '%'; a bare '% ' is E539, and lualine stops refreshing
