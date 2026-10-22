@@ -23,10 +23,11 @@ local LIST = '/Intermediate/ClangdFullPCH.txt'
 -- light commands do not cover. So each server first opens this empty file, which .clangd gives no
 -- forced includes (it parses at once), and closes it again.
 M.START = 'Intermediate/ClangdStart.cpp'
+M.START_MATCH = 'PathMatch: ' .. M.START:gsub('%.', '\\.') -- also how .clangd writers find the fragment
 M.CLANGD_FRAGMENT = table.concat({
   '---',
   'If:',
-  '  PathMatch: ' .. M.START:gsub('%.', '\\.'),
+  '  ' .. M.START_MATCH,
   'CompileFlags:',
   '  Remove: [/FI]',
   '',
