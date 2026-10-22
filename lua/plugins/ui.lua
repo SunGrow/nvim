@@ -7,11 +7,13 @@ local ctx = require('core.context')
 local ue_project_name = ctx.ue_project_name or (ctx.wsl_ue or ctx.ue_unix or {}).name or ''
 local ue_tools = ctx.is_ue
 
---- The statusline drops its least needed items as the terminal narrows, and the file path gives up its
---- leading folders to fit what is left, so Neovim never cuts the line (it cut at the start of the file
---- name: "<ngd, ue_ls" at 160 columns).
+--- The statusline keeps the file name whole: when the path does not fit, the least needed items give
+--- way (RAM, file type, project name, then the index progress and the F1 hint), then the leading
+--- folders. Neovim's own truncation cut the line at the start of the file name ("<ngd, ue_ls").
 local function wide(cols) return function() return vim.o.columns >= cols end end
 local sw = vim.api.nvim_strwidth
+local dropped = {} -- items `file_name` hid for this redraw (lualine draws section c before x)
+local function shown(key) return function() return not dropped[key] end end
 
 -- Our components: shown by lualine, and measured by `file_name` (as icon .. ' ' .. text).
 local clangd_state = {
@@ -29,14 +31,14 @@ local clangd_index = {
   -- clangd's background index while it runs: "󰒓 index 12% · 14 threads"; click for details
   function() return require('core.clangd').index_text() end,
   color = { fg = '#7dcfff' },
-  cond = function() return package.loaded['core.clangd'] ~= nil and vim.o.columns >= 130 end,
+  cond = function() return package.loaded['core.clangd'] ~= nil and not dropped.index end,
   on_click = function() require('core.clangd').index_details() end,
 }
 local project = {
   function() return ue_project_name end,
   icon = '󰿅',
   color = { fg = '#9ece6a' },
-  cond = function() return ue_project_name ~= '' and vim.o.columns >= 170 end,
+  cond = function() return ue_project_name ~= '' and not dropped.project end,
 }
 local ue_state = {
   -- UE index / server activity: "UE ⠋ indexing 42%", "UE ✓" when ready (lua/ue/status.lua)
@@ -59,26 +61,34 @@ local keys = {
   function() return 'F1 keys' end,
   icon = '󰌌',
   color = { fg = '#7aa2f7' },
-  cond = wide(100),
+  cond = shown('keys'),
   on_click = function() require('core.keyhelp').show() end,
 }
 local ram = {
   function() return ram_mb .. ' MB' end,
   icon = '',
   color = { fg = '#e0af68' },
-  cond = wide(190),
+  cond = shown('ram'),
 }
-local MEASURED = { clangd_state, clangd_index, project, ue_state, run_config, keys, ram }
+local filetype = { function() return vim.bo.filetype end, icon = ' ' } -- measured only; lualine draws its own
+-- what may give way, least needed first; `fixed` items always stay
+local OPTIONAL = { { 'ram', ram }, { 'filetype', filetype }, { 'project', project }, { 'index', clangd_index }, { 'keys', keys } }
+local FIXED = { clangd_state, ue_state, run_config }
 
---- Cells the statusline uses besides the file name: each component is its text, a space on both sides
---- and a separator. lualine's own components are estimated.
-local function others_width()
-  local w = 0
-  local function add(t) if t and t ~= '' then w = w + sw(t) + 3 end end
-  add(require('lualine.utils.mode').get_mode())
+--- Cells a component takes: its text, a space on both sides and a separator; 0 when hidden or empty.
+local function cells(c)
+  if c.cond and not c.cond() then return 0 end
+  local ok, t = pcall(c[1])
+  if not ok or not t or t == '' then return 0 end
+  return sw((c.icon and (c.icon .. ' ') or '') .. t) + 3
+end
+
+--- Cells of everything but the file name and the optional items. lualine's own components are estimated.
+local function fixed_width()
+  local w = sw(require('lualine.utils.mode').get_mode()) + 3
   if vim.o.columns >= 110 then
     local ok, branch = pcall(function() return require('lualine.components.branch.git_branch').get_branch() end)
-    if ok and branch then add('  ' .. branch) end
+    if ok and branch and branch ~= '' then w = w + sw(branch) + 5 end
   end
   local d = vim.b.gitsigns_status_dict
   if d then
@@ -87,14 +97,8 @@ local function others_width()
     end
   end
   for _, n in pairs(vim.diagnostic.count(0)) do w = w + 3 + #tostring(n) end
-  for _, c in ipairs(MEASURED) do
-    if not c.cond or c.cond() then
-      local ok, t = pcall(c[1])
-      if ok and t and t ~= '' then add((c.icon and (c.icon .. ' ') or '') .. t) end
-    end
-  end
-  if vim.o.columns >= 170 and vim.bo.filetype ~= '' then add('  ' .. vim.bo.filetype) end
-  return w + 10 -- location "123:45" and its separator
+  for _, c in ipairs(FIXED) do w = w + cells(c) end
+  return w + 8 -- location " 123:45 " and its separator
 end
 
 --- `path` in `room` cells: the leading folders give way first ("…\Framework\GameState\Foo.cpp").
@@ -123,16 +127,34 @@ local function work_win()
 end
 
 --- File of that window, relative to the working directory, with ● when modified and 󰌾 when read-only.
+--- Decides which optional items give way (see `OPTIONAL`).
 local function file_name()
   local buf = vim.api.nvim_win_get_buf(work_win())
   local name = vim.api.nvim_buf_get_name(buf)
+  local text
   if vim.bo[buf].buftype ~= '' or name == '' then
     local ft = vim.bo[buf].filetype
-    return name ~= '' and vim.fn.fnamemodify(name, ':t') or (ft ~= '' and ft or '[No Name]')
+    text = name ~= '' and vim.fn.fnamemodify(name, ':t') or (ft ~= '' and ft or '[No Name]')
+  else
+    text = vim.fn.fnamemodify(name, ':~:.')
   end
   local flags = (vim.bo[buf].modified and ' ●' or '') .. ((vim.bo[buf].readonly or not vim.bo[buf].modifiable) and ' 󰌾' or '')
-  local room = vim.o.columns - others_width() - 3 - sw(flags)
-  return fit_path(vim.fn.fnamemodify(name, ':~:.'), math.max(room, 12)) .. flags
+  dropped = {} -- measure every item, then hide again
+  local widths = {}
+  local room = vim.o.columns - fixed_width() - sw(flags) - 3
+  for i, o in ipairs(OPTIONAL) do
+    widths[i] = cells(o[2])
+    room = room - widths[i]
+  end
+  -- the whole path, else at least the file name: the least needed items give way first
+  local hide = {}
+  for i, o in ipairs(OPTIONAL) do
+    local want = i <= 3 and sw(text) or sw(vim.fn.fnamemodify(text, ':t'))
+    if room >= want then break end
+    if widths[i] > 0 then hide[o[1]] = true; room = room + widths[i] end
+  end
+  dropped = hide
+  return fit_path(text, math.max(room, 8)) .. flags
 end
 
 return {
@@ -153,9 +175,8 @@ return {
       -- NOTE: LSP progress display is handled by fidget.nvim, not the statusline.
     end,
     -- left: what you edit (file, its git and error state, clangd's progress on it); right: the project
-    -- and its run configuration, then help and the cursor position. Items drop out as the terminal
-    -- narrows: RAM below 190 columns, project name and file type below 170, index below 130, branch
-    -- below 110, "F1 keys" below 100.
+    -- and its run configuration, then help and the cursor position. When space is short, items give
+    -- way to the file name (`file_name`); the branch shows from 110 columns.
     opts = {
       options = {
         globalstatus = true,
@@ -173,7 +194,7 @@ return {
           -- only when it is not the usual UTF-8 / Unix
           { 'encoding', cond = function() return vim.bo.fileencoding ~= '' and vim.bo.fileencoding ~= 'utf-8' end },
           { 'fileformat', cond = function() return vim.bo.fileformat ~= 'unix' and vim.bo.fileformat ~= 'dos' end },
-          { 'filetype', cond = wide(170) },
+          { 'filetype', cond = shown('filetype') },
         },
         lualine_y = {},
         lualine_z = { 'location' },
