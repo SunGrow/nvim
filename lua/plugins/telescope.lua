@@ -23,6 +23,28 @@ local function ue_or_plain(uep_cmd, plain)
   end))
 end
 
+-- Unreal projects (Windows, WSL, Linux): Content/ folders hold the assets, binary .uasset/.umap files
+-- with nothing to open or grep here. They are most of the files (Slam: 22,631 of 26,668), so listing
+-- them took 4.6 s over WSL's /mnt/d, longer while clangd indexes, with source files arriving late;
+-- without them 0.2 s.
+local NO_CONTENT = { '-g', '!**/Content/**' }
+local function ue_files()
+  local ctx = require('core.context')
+  return ctx.is_ue or ctx.wsl_ue ~= nil or ctx.ue_unix ~= nil
+end
+
+local function find_files()
+  local opts = {}
+  if ue_files() and vim.fn.executable('rg') == 1 then
+    opts.find_command = vim.list_extend({ 'rg', '--files', '--color', 'never' }, NO_CONTENT)
+  end
+  require('telescope.builtin').find_files(opts)
+end
+
+local function live_grep()
+  require('telescope.builtin').live_grep(ue_files() and { additional_args = NO_CONTENT } or {})
+end
+
 return {
   'nvim-telescope/telescope.nvim',
   branch = '0.1.x',
@@ -41,17 +63,19 @@ return {
   },
   keys = {
     { '<leader>ff', function()
-        ue_or_plain('UEP files', function() require('telescope.builtin').find_files() end)
+        ue_or_plain('UEP files', find_files)
       end, desc = 'Find files' },
     { '<leader>fg', function()
-        ue_or_plain('UEP grep', function() require('telescope.builtin').live_grep() end)
+        ue_or_plain('UEP grep', live_grep)
       end, desc = 'Live grep' },
     { '<leader>fb', function() require('telescope.builtin').buffers() end, desc = 'Buffers' },
     { '<leader>fh', function() require('telescope.builtin').help_tags() end, desc = 'Help tags' },
     { '<leader>fd', function() require('telescope.builtin').diagnostics() end, desc = 'Diagnostics' },
     { '<leader>fr', function() require('telescope.builtin').resume() end, desc = 'Resume last' },
     { '<leader>fo', function() require('telescope.builtin').oldfiles() end, desc = 'Recent files' },
-    { '<leader>fw', function() require('telescope.builtin').grep_string() end, desc = 'Grep word' },
+    { '<leader>fw', function()
+        require('telescope.builtin').grep_string(ue_files() and { additional_args = NO_CONTENT } or {})
+      end, desc = 'Grep word' },
     -- searchable list of every key binding and what it does (like Rider's Find Action)
     { '<leader>?', function()
         require('telescope.builtin').keymaps({ modes = { 'n', 'x', 'i' }, show_plug = false, prompt_title = 'Keys (type to search)' })
