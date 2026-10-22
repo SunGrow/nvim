@@ -240,6 +240,7 @@ local function build_unix(cfg, on_success)
   local t0 = vim.uv.hrtime()
   local ok, job = pcall(vim.system, cmd, { cwd = cwd, text = true }, vim.schedule_wrap(function(res)
     build_job = nil
+    pcall(function() require('ue.uht_shadow').refresh() end) -- UHT ran, also when the compile failed
     local output = (res.stdout or '') .. (res.stderr or '')
     local f = io.open(build_log, 'w')
     if f then
@@ -292,6 +293,7 @@ function M.build(cfg, on_success)
     label = cfg.name,
     on_complete = function(result)
       local secs = result and result.elapsed_s or 0
+      pcall(function() require('ue.uht_shadow').refresh() end) -- UHT ran, also when the compile failed
       if build_cancelled then
         build_cancelled = false
         notify('Build cancelled: ' .. cfg.name)

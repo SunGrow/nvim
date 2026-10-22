@@ -213,9 +213,12 @@ end
 if is_ue_project then
   local project_root = ctx.ue_project_root
   local clangd_path = project_root .. '/.clangd'
+  -- shadow *.generated.h first: GENERATED_BODY() stays valid when lines move before the next build
+  -- (lua/ue/uht_shadow.lua)
+  local uht_flag = require('ue.uht_shadow').clangd_flag()
   local clangd_config = table.concat({
     'CompileFlags:',
-    '  Add: [-D__INTELLISENSE__, -Wno-everything]',
+    '  Add: [-D__INTELLISENSE__, ' .. uht_flag .. ', -Wno-everything]',
     -- -resource-dir: UBT points it at Visual Studio's clang 19 headers. With those, clangd 20's
     -- background index records every parameter whose type is a template with a default argument
     -- (TArray, TMap, TSet, TSharedPtr, std::vector...) as `int`, so usages, overrides and callers of
@@ -251,7 +254,8 @@ if is_ue_project then
       or existing:find('-include,', 1, true) ~= nil
     local indexes_intermediate = not existing:find('Background: Skip', 1, true)
     local keeps_resource_dir = not existing:find('-resource-dir', 1, true)
-    if managed_by_this_config and (strips_required_forced_includes or indexes_intermediate or keeps_resource_dir) then
+    local lacks_uht_shadow = not existing:find(uht_flag, 1, true)
+    if managed_by_this_config and (strips_required_forced_includes or indexes_intermediate or keeps_resource_dir or lacks_uht_shadow) then
       should_write = true
     end
   end
