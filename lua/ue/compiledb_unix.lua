@@ -241,7 +241,7 @@ function M.generate(reason)
     return notify('compile_commands.json: ' .. cmd[1] .. ' not found', vim.log.levels.WARN)
   end
   state.running = true
-  local t0 = vim.uv.now()
+  local t0 = vim.uv.hrtime()
   notify(('Generating compile_commands.json (%s)'):format(reason))
   vim.system(cmd, { cwd = cwd, text = true }, vim.schedule_wrap(function(res)
     state.running = false
@@ -257,7 +257,7 @@ function M.generate(reason)
       local ok, err = pcall(M.add_pch)
       if not ok then notify('compile_commands.json: adding PCH failed: ' .. tostring(err), vim.log.levels.WARN) end
       require('ue.compiledb').restart_clangd()
-      notify(('compile_commands.json updated (%s, %.0f s)'):format(reason, (vim.uv.now() - t0) / 1000))
+      notify(('compile_commands.json updated (%s, %.0f s)'):format(reason, (vim.uv.hrtime() - t0) / 1e9))
     elseif output:find('ConflictingInstance', 1, true) and state.conflicts < MAX_CONFLICTS then
       -- another UnrealBuildTool (the editor, Windows Neovim) holds UBT's global mutex for a moment
       state.conflicts = state.conflicts + 1

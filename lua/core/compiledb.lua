@@ -140,7 +140,7 @@ local function run(root, cmd, db, reason, on_done)
   end
   running[root] = true
   local before = read(db)
-  local t0 = vim.uv.now()
+  local t0 = vim.uv.hrtime()
   notify(('%s: %s (%s)'):format(vim.fs.basename(root),
     (table.concat(cmd, ' '):gsub(vim.pesc(root), '.')), reason))
   vim.system(cmd, { cwd = root, text = true }, vim.schedule_wrap(function(res)
@@ -155,7 +155,7 @@ local function run(root, cmd, db, reason, on_done)
       return notify(('%s failed (exit %d), output in %s'):format(cmd[1], res.code, log_path), vim.log.levels.WARN)
     end
     if after and after ~= before then
-      notify(('%s updated (%.1f s)%s'):format(vim.fn.fnamemodify(db, ':~:.'), (vim.uv.now() - t0) / 1000,
+      notify(('%s updated (%.1f s)%s'):format(vim.fn.fnamemodify(db, ':~:.'), (vim.uv.hrtime() - t0) / 1e9,
         res.code ~= 0 and (', with errors: ' .. log_path) or ''))
       restart_clangd()
     end
@@ -265,9 +265,10 @@ function M.setup()
     group = group,
     pattern = { 'CMakeLists.txt', '*.cmake', 'meson.build', 'meson.options', 'meson_options.txt' },
     callback = function(ev)
-      local root, kind = project(ev.file)
+      local file = vim.api.nvim_buf_get_name(ev.buf) -- absolute (ev.file can be relative)
+      local root, kind = project(file)
       if (kind == 'cmake' or kind == 'meson') and #build_dirs(root, kind) > 0 then
-        M.generate(ev.file, vim.fs.basename(ev.file) .. ' saved', false)
+        M.generate(file, vim.fs.basename(file) .. ' saved', false)
       end
     end,
   })
