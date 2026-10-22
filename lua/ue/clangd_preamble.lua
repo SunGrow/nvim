@@ -193,7 +193,8 @@ function M.attach(client)
         if not path or key(path):sub(1, #win_root + 1) ~= key(win_root) .. '/' then return end
         if mine[path] or load_list()[key(path)] then return end
         local e = entry_for(path)
-        local full, light = e and commands(e)
+        if not e then return end
+        local full, light = commands(e)
         if not light then return end
         mine[path] = { mode = 'light', entry = e, full = full }
         send(self, path, e, light)
