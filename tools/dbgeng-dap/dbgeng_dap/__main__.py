@@ -40,11 +40,6 @@ def main(argv=None):
     a = ap.parse_args(argv)
     pairs = [m.split('=', 1) for m in a.path_map if '=' in m]
     path_map = PathMap(pairs, a.wsl) if (pairs or a.wsl) else None
-    if a.wsl:
-        # nvim-dap ends an adapter by closing stdin, then SIGINT; through WSL interop that is a Ctrl+C
-        # here, and KeyboardInterrupt would exit 1 ("adapter exited with 1") before stdin's EOF is read
-        import signal
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
     log = make_logger(a.log)
     log(f'dbgeng-dap start pid={os.getpid()} python={sys.version.split()[0]} argv={sys.argv}')
     if a.port:
