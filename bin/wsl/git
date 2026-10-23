@@ -20,7 +20,10 @@ for a in "$@"; do
   p=${a#--*=}
   case $p in
     /mnt/[a-z] | /mnt/[a-z]/*) win=1; refs+=("$p") ;;
-    /*) if [ -e "$p" ]; then win=; break; fi ;; # a WSL path: not a Windows tree
+    # a WSL path: not a Windows tree. Also one still to be made in an existing folder (lazy.nvim's
+    # `git clone ... ~/.local/share/nvim/lazy/<plugin>` from a Neovim in /mnt/d: git.exe took it as
+    # D:\home\... and cloned there)
+    /*) if [ -e "$p" ] || [ -d "$(dirname "$p")" ]; then win=; break; fi ;;
   esac
 done
 if [ -z "$win" ] || ! command -v git.exe >/dev/null; then exec git "$@"; fi
