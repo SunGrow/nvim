@@ -64,7 +64,7 @@ local SECTIONS = {
     { 'Space gr', '<leader>gr', 'Undo this change' },
     { 'Space gb', '<leader>gb', 'Who changed this line' },
     { 'Space go', '<leader>go', 'Open the commit of this line' },
-    { 'Space ga', '<leader>ga', 'Annotate file (Enter opens a commit)' },
+    { 'Space ga', '<leader>ga', 'Annotate file (? there: its keys)' },
     { 'Space gh / gH', '<leader>gh', 'History of file (lines) / repo, side by side' },
     { 'Space gD', '<leader>gD', 'All changes / merge conflicts side by side' },
     { 'Space gl / gf', '<leader>gl', 'Log / history of this file' },
